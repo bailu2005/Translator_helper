@@ -335,11 +335,19 @@ docs/                  项目文档（含本白皮书）
 - `release.yml`：打 `v*` tag 时构建 zip 并创建 GitHub Release。
 - 后续可接 Chrome Web Store / Edge Add-ons 自动发布。
 
-### 9.3 远程仓库（待办）
+### 9.3 远程仓库
 
-- 本机未安装 `gh`。
-- 需要用户提供：GitHub 用户名、仓库名（默认 `Translator_helper` 或 `translator-helper`）、公开/私有、认证方式（安装 gh 登录 / HTTPS PAT / SSH）。
-- 流程：本地 `git init` + 首次提交 → `git remote add origin` → 推送。
+- GitHub 账号：`bailu2005`
+- 仓库名：`Translator_helper`
+- 远程地址：`https://github.com/bailu2005/Translator_helper.git`
+- 本地仓库已 `git init -b main`，首次提交完成，`origin` 已设置。
+- 待办：在 GitHub 创建空仓库（不要勾选 README/gitignore/license）→ 完成 HTTPS 认证 → 首次推送。
+- 认证：Git Credential Manager 浏览器登录，或使用 PAT。
+- 环境注意：
+  - 本机 SSH 22 端口被网络拒绝，仅可走 HTTPS。
+  - 网络经 SteamTools TLS 代理，git 默认不信任其根证书；已生成组合 CA 包
+    `C:/Users/Administrator/.git-certs/ca-bundle-steamtools.pem` 并写入本仓库
+    `http.sslBackend=openssl`、`http.sslCAInfo` 配置（未关闭证书校验）。
 
 ---
 
@@ -409,7 +417,7 @@ docs/                  项目文档（含本白皮书）
 
 ## 13. 待确认问题（Open Questions）
 
-1. **GitHub 信息**：用户名、仓库名、公开/私有、认证方式（gh 登录 / PAT / SSH）。
+1. **GitHub 仓库**：账号已确认 `bailu2005`；待确认仓库可见性（公开/私有）与首次推送认证方式（GCM 浏览器登录 / PAT）。
 2. **构建框架**：确认用 WXT？（备选：Vite + `@crxjs/vite-plugin`、Plasmo）
 3. **UI 框架**：确认用 React？（备选：Svelte、Vue）
 4. **项目/扩展名称**：暂定 `Translator Helper` / 中文名？

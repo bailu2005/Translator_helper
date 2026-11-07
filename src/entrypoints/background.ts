@@ -1,4 +1,5 @@
-import { isCaptureVisible } from '../lib/messaging/protocol';
+import { appendHistory } from '../lib/history';
+import { isCaptureVisible, isSelectionCropped } from '../lib/messaging/protocol';
 
 export default defineBackground(() => {
   try {
@@ -21,9 +22,14 @@ export default defineBackground(() => {
     }
   });
 
-  browser.runtime.onMessage.addListener((message, sender) => {
+  browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (isCaptureVisible(message)) {
-      return captureVisible(sender.tab?.windowId);
+      void captureVisible(sender.tab?.windowId).then(sendResponse);
+      return true;
+    }
+    if (isSelectionCropped(message)) {
+      void appendHistory(message.payload).then(() => sendResponse({ ok: true }));
+      return true;
     }
     return undefined;
   });

@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { clearHistory, loadHistory, removeHistoryEntry } from '../../lib/history';
+import {
+  clearHistory,
+  loadHistory,
+  MAX_HISTORY,
+  removeHistoryItem,
+  saveHistory,
+} from '../../lib/history';
 import {
   isSelectionCropped,
   type SelectionPayload,
@@ -22,16 +28,14 @@ export default function App() {
     void loadSettings().then(setSettings);
 
     void loadHistory().then((items) => {
-      setHistory(items);
-      setActiveCreatedAt(items[0]?.createdAt ?? null);
+      setHistory((previous) => mergeHistory(previous, items));
+      setActiveCreatedAt((current) => current ?? items[0]?.createdAt ?? null);
     });
 
     const listener = (message: unknown) => {
       if (isSelectionCropped(message)) {
-        void loadHistory().then((items) => {
-          setHistory(items);
-          setActiveCreatedAt(message.payload.createdAt);
-        });
+        setHistory((previous) => mergeHistory(previous, [message.payload]));
+        setActiveCreatedAt(message.payload.createdAt);
         setStatus('已截取区域，接下来接入 OCR 与翻译。');
       }
     };
@@ -53,11 +57,12 @@ export default function App() {
   };
 
   const removeItem = async (createdAt: number) => {
-    const items = await removeHistoryEntry(createdAt);
-    setHistory(items);
-    if (activeCreatedAt === createdAt) {
-      setActiveCreatedAt(items[0]?.createdAt ?? null);
-    }
+    const next = removeHistoryItem(history, createdAt);
+    setHistory(next);
+    setActiveCreatedAt((current) =>
+      current === createdAt ? (next[0]?.createdAt ?? null) : current,
+    );
+    await saveHistory(next);
     setStatus('已删除该条截取记录。');
   };
 
@@ -166,6 +171,24 @@ export default function App() {
       </footer>
     </main>
   );
+}
+
+function mergeHistory(
+  current: SelectionPayload[],
+  incoming: SelectionPayload[],
+): SelectionPayload[] {
+  const seen = new Set(current.map((item) => item.createdAt));
+  const merged = [...current];
+
+  for (const item of incoming) {
+    if (!seen.has(item.createdAt)) {
+      merged.push(item);
+      seen.add(item.createdAt);
+    }
+  }
+
+  merged.sort((a, b) => b.createdAt - a.createdAt);
+  return merged.slice(0, MAX_HISTORY);
 }
 
 function sourceLabel(source: SelectionSource): string {

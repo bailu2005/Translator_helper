@@ -20,6 +20,14 @@ export async function loadHistory(): Promise<SelectionPayload[]> {
   }
 }
 
+export async function saveHistory(items: SelectionPayload[]): Promise<void> {
+  try {
+    await browser.storage.session.set({ [HISTORY_KEY]: items });
+  } catch {
+    // session storage may be unavailable or full
+  }
+}
+
 export async function appendHistory(payload: SelectionPayload): Promise<SelectionPayload[]> {
   const current = await loadHistory();
   const next = [payload, ...current.filter((item) => item.createdAt !== payload.createdAt)].slice(
@@ -27,26 +35,15 @@ export async function appendHistory(payload: SelectionPayload): Promise<Selectio
     MAX_HISTORY,
   );
 
-  try {
-    await browser.storage.session.set({ [HISTORY_KEY]: next });
-  } catch {
-    // session storage may be unavailable or full
-  }
-
+  await saveHistory(next);
   return next;
 }
 
-export async function removeHistoryEntry(createdAt: number): Promise<SelectionPayload[]> {
-  const current = await loadHistory();
-  const next = current.filter((item) => item.createdAt !== createdAt);
-
-  try {
-    await browser.storage.session.set({ [HISTORY_KEY]: next });
-  } catch {
-    // session storage may be unavailable
-  }
-
-  return next;
+export function removeHistoryItem(
+  items: SelectionPayload[],
+  createdAt: number,
+): SelectionPayload[] {
+  return items.filter((item) => item.createdAt !== createdAt);
 }
 
 export async function clearHistory(): Promise<void> {

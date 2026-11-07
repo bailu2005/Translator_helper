@@ -1,12 +1,38 @@
 import { useEffect, useState } from 'react';
+import {
+  isSelectionCropped,
+  type SelectionPayload,
+  type SelectionSource,
+} from '../../lib/messaging/protocol';
 import { loadSettings, type Settings } from '../../lib/settings';
 
 export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [selection, setSelection] = useState<SelectionPayload | null>(null);
   const [status, setStatus] = useState('框选网页中的漫画/图片文字，识别结果会显示在这里。');
 
   useEffect(() => {
     void loadSettings().then(setSettings);
+
+    void browser.storage.session
+      .get('lastSelection')
+      .then((stored) => {
+        const payload = stored.lastSelection as SelectionPayload | undefined;
+        if (payload) {
+          setSelection(payload);
+        }
+      })
+      .catch(() => {});
+
+    const listener = (message: unknown) => {
+      if (isSelectionCropped(message)) {
+        setSelection(message.payload);
+        setStatus('已截取区域，接下来接入 OCR 与翻译。');
+      }
+    };
+
+    browser.runtime.onMessage.addListener(listener);
+    return () => browser.runtime.onMessage.removeListener(listener);
   }, []);
 
   const startSelection = async () => {
@@ -35,8 +61,26 @@ export default function App() {
       <p className="status">{status}</p>
 
       <section className="result">
-        <h2>译文</h2>
-        <p className="placeholder">暂无内容</p>
+        <h2>截取预览</h2>
+        {selection ? (
+          <div className="preview">
+            <img src={selection.dataUrl} alt="框选区域预览" />
+            <dl>
+              <div>
+                <dt>尺寸</dt>
+                <dd>
+                  {selection.width} × {selection.height}
+                </dd>
+              </div>
+              <div>
+                <dt>来源</dt>
+                <dd>{sourceLabel(selection.source)}</dd>
+              </div>
+            </dl>
+          </div>
+        ) : (
+          <p className="placeholder">暂无内容</p>
+        )}
       </section>
 
       <footer>
@@ -45,4 +89,21 @@ export default function App() {
       </footer>
     </main>
   );
+}
+
+function sourceLabel(source: SelectionSource): string {
+  switch (source) {
+    case 'img':
+      return '图片';
+    case 'canvas':
+      return 'Canvas';
+    case 'video':
+      return '视频帧';
+    case 'background':
+      return '背景图';
+    case 'viewport':
+      return '视口截图';
+    default:
+      return source;
+  }
 }

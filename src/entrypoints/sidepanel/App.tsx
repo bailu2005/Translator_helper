@@ -11,9 +11,10 @@ import {
   type SelectionPayload,
   type SelectionSource,
 } from '../../lib/messaging/protocol';
+import type { OcrOrientation, ReadingOrder } from '../../lib/ocr/order';
 import { tesseractOcrProvider } from '../../lib/ocr/tesseract';
 import type { OcrResult } from '../../lib/ocr/types';
-import { loadSettings, type Settings } from '../../lib/settings';
+import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from '../../lib/settings';
 
 interface OcrState {
   createdAt: number;
@@ -31,7 +32,8 @@ export default function App() {
   const [status, setStatus] = useState('框选网页中的漫画/图片文字，识别结果会显示在这里。');
   const [ocrState, setOcrState] = useState<OcrState | null>(null);
   const [retryToken, setRetryToken] = useState(0);
-  const ocrCache = useRef(new Map<number, OcrResult>());
+  const [settingsReady, setSettingsReady] = useState(false);
+  const ocrCache = useRef(new Map<string, OcrResult>());
 
   const activeSelection = useMemo(
     () => history.find((item) => item.createdAt === activeCreatedAt) ?? null,
@@ -39,9 +41,15 @@ export default function App() {
   );
   const activeId = activeSelection?.createdAt ?? null;
   const activeDataUrl = activeSelection?.dataUrl ?? null;
+  const orientation = settings?.ocrOrientation ?? 'vertical';
+  const readingOrder = settings?.readingOrder ?? 'rtl';
+  const activeCacheKey = activeId === null ? null : `${activeId}:${orientation}:${readingOrder}`;
 
   useEffect(() => {
-    void loadSettings().then(setSettings);
+    void loadSettings().then((loaded) => {
+      setSettings(loaded);
+      setSettingsReady(true);
+    });
 
     void loadHistory().then((items) => {
       setHistory((previous) => mergeHistory(previous, items));
@@ -61,12 +69,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!activeId || !activeDataUrl) {
+    if (!settingsReady) {
+      return;
+    }
+    if (!activeId || !activeDataUrl || !activeCacheKey) {
       setOcrState(null);
       return;
     }
 
-    const cached = ocrCache.current.get(activeId);
+    const cached = ocrCache.current.get(activeCacheKey);
     if (cached) {
       setOcrState({ createdAt: activeId, status: 'done', progress: 1, result: cached });
       return;
@@ -77,6 +88,8 @@ export default function App() {
 
     void tesseractOcrProvider
       .recognize(activeDataUrl, {
+        orientation,
+        readingOrder,
         onProgress: ({ status: progressStatus, progress }) => {
           if (cancelled) return;
           setOcrState((previous) =>
@@ -88,7 +101,7 @@ export default function App() {
       })
       .then((result) => {
         if (cancelled) return;
-        ocrCache.current.set(activeId, result);
+        ocrCache.current.set(activeCacheKey, result);
         setOcrState({ createdAt: activeId, status: 'done', progress: 1, result });
         setStatus('识别完成。');
       })
@@ -106,7 +119,15 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeId, activeDataUrl, retryToken]);
+  }, [
+    activeId,
+    activeDataUrl,
+    activeCacheKey,
+    retryToken,
+    settingsReady,
+    orientation,
+    readingOrder,
+  ]);
 
   const startSelection = async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -132,7 +153,11 @@ export default function App() {
     setActiveCreatedAt((current) =>
       current === createdAt ? (next[0]?.createdAt ?? null) : current,
     );
-    ocrCache.current.delete(createdAt);
+    for (const key of [...ocrCache.current.keys()]) {
+      if (key.startsWith(`${createdAt}:`)) {
+        ocrCache.current.delete(key);
+      }
+    }
     await saveHistory(next);
     setStatus('已删除该条截取记录。');
   };
@@ -147,8 +172,31 @@ export default function App() {
 
   const retryOcr = () => {
     if (activeId === null) return;
-    ocrCache.current.delete(activeId);
+    for (const key of [...ocrCache.current.keys()]) {
+      if (key.startsWith(`${activeId}:`)) {
+        ocrCache.current.delete(key);
+      }
+    }
     setRetryToken((value) => value + 1);
+  };
+
+  const updateOcrSettings = (patch: Partial<Settings>) => {
+    setSettings((previous) => {
+      const next = { ...(previous ?? DEFAULT_SETTINGS), ...patch };
+      void saveSettings(next);
+      return next;
+    });
+  };
+
+  const changeOrientation = (value: OcrOrientation) => {
+    updateOcrSettings({
+      ocrOrientation: value,
+      readingOrder: value === 'vertical' ? 'rtl' : 'ltr',
+    });
+  };
+
+  const changeReadingOrder = (value: ReadingOrder) => {
+    updateOcrSettings({ readingOrder: value });
   };
 
   const copyOcrText = async () => {
@@ -231,6 +279,30 @@ export default function App() {
             )}
           </div>
         </div>
+
+        <div className="ocr-options">
+          <label>
+            方向
+            <select
+              value={orientation}
+              onChange={(event) => changeOrientation(event.target.value as OcrOrientation)}
+            >
+              <option value="vertical">竖排</option>
+              <option value="horizontal">横排</option>
+            </select>
+          </label>
+          <label>
+            顺序
+            <select
+              value={readingOrder}
+              onChange={(event) => changeReadingOrder(event.target.value as ReadingOrder)}
+            >
+              <option value="rtl">右 → 左</option>
+              <option value="ltr">左 → 右</option>
+            </select>
+          </label>
+        </div>
+
         {renderOcr()}
       </section>
 

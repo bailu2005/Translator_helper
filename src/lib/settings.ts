@@ -1,11 +1,17 @@
+import type { OcrOrientation, ReadingOrder } from './ocr/order';
+
 export interface Settings {
   sourceLang: string;
   targetLang: string;
+  ocrOrientation: OcrOrientation;
+  readingOrder: ReadingOrder;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   sourceLang: 'ja',
   targetLang: 'zh-CN',
+  ocrOrientation: 'vertical',
+  readingOrder: 'rtl',
 };
 
 export async function loadSettings(): Promise<Settings> {

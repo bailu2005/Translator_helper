@@ -1,3 +1,5 @@
+import type { OcrOrientation, ReadingOrder } from './order';
+
 export interface OcrProgress {
   status: string;
   progress: number;
@@ -12,8 +14,14 @@ export interface OcrResult {
   durationMs: number;
 }
 
+export interface OcrOptions {
+  orientation?: OcrOrientation;
+  readingOrder?: ReadingOrder;
+  onProgress?: OcrProgressListener;
+}
+
 export interface OcrProvider {
   id: string;
   name: string;
-  recognize(image: string, options?: { onProgress?: OcrProgressListener }): Promise<OcrResult>;
+  recognize(image: string, options?: OcrOptions): Promise<OcrResult>;
 }

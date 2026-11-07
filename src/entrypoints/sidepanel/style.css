@@ -86,6 +86,29 @@ button {
   gap: 4px;
 }
 
+.ocr-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.ocr-options label {
+  align-items: center;
+  display: flex;
+  font-size: 12px;
+  gap: 6px;
+  opacity: 0.8;
+}
+
+.ocr-options select {
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 6px;
+}
+
 .placeholder {
   font-size: 13px;
   opacity: 0.5;

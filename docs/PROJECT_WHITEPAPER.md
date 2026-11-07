@@ -162,12 +162,13 @@ popup（开关、语言、快捷入口）      options（Provider、Key、术语
 ### 5.4 一期 OCR：Tesseract.js + 竖排日语
 
 - 运行位置：**侧边栏（受信任扩展页面）**内创建 Tesseract Worker，避免 content script 的页面 CSP/CORS 与 `storage.session` 权限限制。
-- 语言包：`jpn_vert`（竖排），同时准备 `jpn` 备用。
-- 参数：`tessedit_pageseg_mode = 5`（单一竖排文本块）。
+- 语言包与方向：竖排 `jpn_vert` + PSM 5；横排 `jpn` + PSM 6。侧边栏可选择方向与阅读顺序（右→左 / 左→右）。
+- 阅读顺序：请求 `blocks` 输出，按行 `bbox` 排序（竖排按列从右到左，横排按行从上到下）。
+- 预处理（P2.1）：最长边目标 1200、最高放大 2.5 倍，灰度 + 对比度增强 + 白边；深色背景自动反色。
+- 低置信度重试：置信度 < 55 时用 PSM AUTO 再识别一次，取置信度更高者。
 - 资源打包：`npm run setup:ocr` 从 npm 依赖复制 worker / core / traineddata 到 `public/tesseract`、`public/tessdata`（不提交仓库），构建时随扩展打包，离线可用。
 - CSP：`extension_pages` 已加入 `'wasm-unsafe-eval'`。
-- 输出（P2）：文本 + 置信度；行/词级 `bbox` 留待需要逐行对照时补充。
-- Worker 常驻策略：单例复用；首次加载语言包较慢，之后复用。
+- Worker 常驻策略：单例复用；首次加载语言包较慢，之后复用。OCR 请求串行队列，避免方向切换时并发冲突。
 
 ### 5.5 竖排阅读顺序与后处理
 
@@ -385,6 +386,7 @@ docs/                  项目文档（含本白皮书）
 
 - Tesseract.js `jpn_vert` 在侧边栏内的 Worker 运行。
 - 自动识别当前选区，显示进度、日文文本与置信度，支持重新识别 / 复制。
+- P2.1：方向（竖排/横排）+ 阅读顺序（右→左/左→右）选择、图像预处理、低置信度重试。
 
 **验收**：对固定漫画 fixture，识别结果达到约定准确率阈值。
 

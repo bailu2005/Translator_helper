@@ -57,7 +57,7 @@ Chrome/Edge 浏览器扩展：用户手动框选网页中的**日语图片 / 漫
 | D-10 | 图片处理 | 本地裁剪 + 本地 OCR，不上传 | 已定 |
 | D-11 | 仓库位置 | `D:\Translator_helper` 独立 git 仓库 | 已定 |
 | D-12 | 跨浏览器 API | `webextension-polyfill` 的 `browser.*` + 适配层 | 已定 |
-| D-13 | 许可证 | 待定 | 待确认 |
+| D-13 | 许可证 | MIT | 已定 |
 
 ---
 
@@ -421,7 +421,7 @@ docs/                  项目文档（含本白皮书）
 2. **构建框架**：确认用 WXT？（备选：Vite + `@crxjs/vite-plugin`、Plasmo）
 3. **UI 框架**：确认用 React？（备选：Svelte、Vue）
 4. **项目/扩展名称**：暂定 `Translator Helper` / 中文名？
-5. **许可证**：MIT / Apache-2.0 / 其它？
+5. **许可证**：已确定为 MIT。
 6. **免费翻译源**：一期先用哪个（Chrome 内置 API 实测 / LibreTranslate / MyMemory / 平台 Key）？
 7. **OCR 语言包分发**：打包进扩展还是首次下载缓存？
 8. **是否一期就支持**：PDF 内图片、跨域 iframe、自动气泡检测、朗读 TTS？

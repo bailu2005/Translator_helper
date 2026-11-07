@@ -13,8 +13,16 @@ export function domRectToRect(rect: DOMRect): Rect {
 }
 
 export function findImageTarget(selection: Rect): ImageTarget | null {
+  const points = samplePoints(selection);
+
+  for (const [x, y] of points) {
+    if (document.elementFromPoint(x, y) instanceof HTMLIFrameElement) {
+      return null;
+    }
+  }
+
   const elements: Element[] = [];
-  for (const [x, y] of samplePoints(selection)) {
+  for (const [x, y] of points) {
     for (const element of document.elementsFromPoint(x, y)) {
       if (!elements.includes(element)) {
         elements.push(element);

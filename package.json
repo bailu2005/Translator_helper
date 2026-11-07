@@ -16,14 +16,18 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run --passWithNoTests",
+    "setup:ocr": "node scripts/setup-ocr-assets.mjs",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@tesseract.js-data/jpn": "^1.0.0",
+    "@tesseract.js-data/jpn_vert": "^1.0.0",
     "@types/chrome": "^0.3.7",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

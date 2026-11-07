@@ -43,21 +43,21 @@ Chrome/Edge 浏览器扩展：用户手动框选网页中的**日语图片 / 漫
 
 ## 2. 关键决策记录（ADR）
 
-| ID   | 主题         | 决策                                              | 状态                 |
-| ---- | ------------ | ------------------------------------------------- | -------------------- |
-| D-01 | 目标平台     | Chrome/Edge，Manifest V3；架构预留 Firefox        | 已定                 |
-| D-02 | 构建框架     | WXT + TypeScript（一套代码生成多浏览器 manifest） | 待确认               |
-| D-03 | UI 框架      | React                                             | 待确认               |
-| D-04 | 包管理器     | npm（本机 PowerShell 限制，使用 `npm.cmd`）       | 已定                 |
-| D-05 | 展示位置     | Chrome 原生 `chrome.sidePanel` 侧边栏             | 已定                 |
-| D-06 | 一期 OCR     | Tesseract.js + `jpn_vert`（竖排日语）             | 已定                 |
-| D-07 | 二期 OCR     | manga-ocr 导出 ONNX + WebGPU/ONNX Runtime Web     | 已定（后续）         |
-| D-08 | 选区方式     | 手动框选，不做自动气泡检测                        | 已定                 |
-| D-09 | 翻译源       | 默认免费源；可选术语表/离线词典/LLM               | 已定（具体源待确认） |
-| D-10 | 图片处理     | 本地裁剪 + 本地 OCR，不上传                       | 已定                 |
-| D-11 | 仓库位置     | `D:\Translator_helper` 独立 git 仓库              | 已定                 |
-| D-12 | 跨浏览器 API | `webextension-polyfill` 的 `browser.*` + 适配层   | 已定                 |
-| D-13 | 许可证       | MIT                                               | 已定                 |
+| ID   | 主题         | 决策                                                   | 状态                 |
+| ---- | ------------ | ------------------------------------------------------ | -------------------- |
+| D-01 | 目标平台     | Chrome/Edge，Manifest V3；架构预留 Firefox             | 已定                 |
+| D-02 | 构建框架     | WXT + TypeScript（一套代码生成多浏览器 manifest）      | 已定                 |
+| D-03 | UI 框架      | React                                                  | 已定                 |
+| D-04 | 包管理器     | npm（本机 PowerShell 限制，使用 `npm.cmd`）            | 已定                 |
+| D-05 | 展示位置     | Chrome 原生 `chrome.sidePanel` 侧边栏                  | 已定                 |
+| D-06 | 一期 OCR     | Tesseract.js + `jpn_vert`（竖排日语，侧边栏内 Worker） | 已定                 |
+| D-07 | 二期 OCR     | manga-ocr 导出 ONNX + WebGPU/ONNX Runtime Web          | 已定（后续）         |
+| D-08 | 选区方式     | 手动框选，不做自动气泡检测                             | 已定                 |
+| D-09 | 翻译源       | 默认免费源；可选术语表/离线词典/LLM                    | 已定（具体源待确认） |
+| D-10 | 图片处理     | 本地裁剪 + 本地 OCR，不上传                            | 已定                 |
+| D-11 | 仓库位置     | `D:\Translator_helper` 独立 git 仓库                   | 已定                 |
+| D-12 | 跨浏览器 API | `webextension-polyfill` 的 `browser.*` + 适配层        | 已定                 |
+| D-13 | 许可证       | MIT                                                    | 已定                 |
 
 ---
 
@@ -161,11 +161,13 @@ popup（开关、语言、快捷入口）      options（Provider、Key、术语
 
 ### 5.4 一期 OCR：Tesseract.js + 竖排日语
 
-- 语言包：`jpn_vert`（竖排），必要时叠加 `jpn`。
-- 参数：`tessedit_pageseg_mode = 5`（单一竖排文本块），`user_defined_dpi = 300`。
-- 语言包策略（待确认）：打包进扩展（离线可用但体积增大）或首次运行下载并缓存到 IndexedDB/Cache。
-- 输出：文本 + 行/词级 `bbox` + `confidence`。
-- Worker 常驻策略：按需创建、闲置回收。
+- 运行位置：**侧边栏（受信任扩展页面）**内创建 Tesseract Worker，避免 content script 的页面 CSP/CORS 与 `storage.session` 权限限制。
+- 语言包：`jpn_vert`（竖排），同时准备 `jpn` 备用。
+- 参数：`tessedit_pageseg_mode = 5`（单一竖排文本块）。
+- 资源打包：`npm run setup:ocr` 从 npm 依赖复制 worker / core / traineddata 到 `public/tesseract`、`public/tessdata`（不提交仓库），构建时随扩展打包，离线可用。
+- CSP：`extension_pages` 已加入 `'wasm-unsafe-eval'`。
+- 输出（P2）：文本 + 置信度；行/词级 `bbox` 留待需要逐行对照时补充。
+- Worker 常驻策略：单例复用；首次加载语言包较慢，之后复用。
 
 ### 5.5 竖排阅读顺序与后处理
 
@@ -285,17 +287,18 @@ docs/                  项目文档（含本白皮书）
 
 ### 8.1 权限（最小化）
 
-| 权限                        | 用途                                |
-| --------------------------- | ----------------------------------- |
-| `sidePanel`                 | 侧边栏                              |
-| `storage`                   | 设置、缓存、术语表                  |
-| `activeTab`                 | 用户触发时访问当前页                |
-| `scripting`                 | 动态注入内容脚本                    |
-| `contextMenus`              | 右键入口                            |
-| `offscreen`（可能需要）     | 特定后台处理                        |
-| `optional_host_permissions` | 按站点申请跨域图片 fetch 与翻译 API |
+| 权限                        | 用途                                                                 |
+| --------------------------- | -------------------------------------------------------------------- |
+| `sidePanel`                 | 侧边栏                                                               |
+| `storage`                   | 设置、缓存、术语表                                                   |
+| `activeTab`                 | 用户触发时访问当前页                                                 |
+| `scripting`                 | 动态注入内容脚本                                                     |
+| `contextMenus`              | 右键入口                                                             |
+| `offscreen`（可能需要）     | 特定后台处理                                                         |
+| `host_permissions`          | 拉取跨域图片原始字节、`captureVisibleTab` 截图兜底、按需注入内容脚本 |
+| `optional_host_permissions` | 预留：后续可改为按站点申请                                           |
 
-- 尽量不申请 `<all_urls>`；跨域图片/翻译 API 用**可选权限**按需申请。
+- 当前已申请 `host_permissions: ['<all_urls>']`：跨域漫画 CDN 图片会污染 canvas，需要后台 fetch 原图或截图兜底；内容脚本本身已覆盖全站。后续可评估改为可选权限。
 
 ### 8.2 CSP
 
@@ -380,8 +383,8 @@ docs/                  项目文档（含本白皮书）
 
 ### P2 OCR 接入
 
-- Tesseract.js `jpn_vert` 在 Worker 运行。
-- 竖排排序 + 假名过滤，输出日文文本与置信度。
+- Tesseract.js `jpn_vert` 在侧边栏内的 Worker 运行。
+- 自动识别当前选区，显示进度、日文文本与置信度，支持重新识别 / 复制。
 
 **验收**：对固定漫画 fixture，识别结果达到约定准确率阈值。
 

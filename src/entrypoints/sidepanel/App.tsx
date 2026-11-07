@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   clearHistory,
   loadHistory,
@@ -11,18 +11,34 @@ import {
   type SelectionPayload,
   type SelectionSource,
 } from '../../lib/messaging/protocol';
+import { tesseractOcrProvider } from '../../lib/ocr/tesseract';
+import type { OcrResult } from '../../lib/ocr/types';
 import { loadSettings, type Settings } from '../../lib/settings';
+
+interface OcrState {
+  createdAt: number;
+  status: 'running' | 'done' | 'error';
+  progress: number;
+  statusText?: string;
+  result?: OcrResult;
+  error?: string;
+}
 
 export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [history, setHistory] = useState<SelectionPayload[]>([]);
   const [activeCreatedAt, setActiveCreatedAt] = useState<number | null>(null);
   const [status, setStatus] = useState('框选网页中的漫画/图片文字，识别结果会显示在这里。');
+  const [ocrState, setOcrState] = useState<OcrState | null>(null);
+  const [retryToken, setRetryToken] = useState(0);
+  const ocrCache = useRef(new Map<number, OcrResult>());
 
   const activeSelection = useMemo(
     () => history.find((item) => item.createdAt === activeCreatedAt) ?? null,
     [history, activeCreatedAt],
   );
+  const activeId = activeSelection?.createdAt ?? null;
+  const activeDataUrl = activeSelection?.dataUrl ?? null;
 
   useEffect(() => {
     void loadSettings().then(setSettings);
@@ -36,7 +52,7 @@ export default function App() {
       if (isSelectionCropped(message)) {
         setHistory((previous) => mergeHistory(previous, [message.payload]));
         setActiveCreatedAt(message.payload.createdAt);
-        setStatus('已截取区域，接下来接入 OCR 与翻译。');
+        setStatus('已截取区域，正在识别日文。');
       }
     };
 
@@ -44,16 +60,70 @@ export default function App() {
     return () => browser.runtime.onMessage.removeListener(listener);
   }, []);
 
+  useEffect(() => {
+    if (!activeId || !activeDataUrl) {
+      setOcrState(null);
+      return;
+    }
+
+    const cached = ocrCache.current.get(activeId);
+    if (cached) {
+      setOcrState({ createdAt: activeId, status: 'done', progress: 1, result: cached });
+      return;
+    }
+
+    let cancelled = false;
+    setOcrState({ createdAt: activeId, status: 'running', progress: 0, statusText: '准备 OCR' });
+
+    void tesseractOcrProvider
+      .recognize(activeDataUrl, {
+        onProgress: ({ status: progressStatus, progress }) => {
+          if (cancelled) return;
+          setOcrState((previous) =>
+            previous && previous.createdAt === activeId
+              ? { ...previous, progress, statusText: progressStatus }
+              : previous,
+          );
+        },
+      })
+      .then((result) => {
+        if (cancelled) return;
+        ocrCache.current.set(activeId, result);
+        setOcrState({ createdAt: activeId, status: 'done', progress: 1, result });
+        setStatus('识别完成。');
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setOcrState({
+          createdAt: activeId,
+          status: 'error',
+          progress: 0,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        setStatus('识别失败，可点击「重新识别」。');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, activeDataUrl, retryToken]);
+
   const startSelection = async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
 
-    try {
-      await browser.tabs.sendMessage(tab.id, { type: 'START_SELECTION' });
+    if (await tryStartSelection(tab.id)) {
       setStatus('已进入框选模式，请在页面中拖拽选择文字区域。');
-    } catch {
-      setStatus('当前页面无法框选，请刷新页面后重试。');
+      return;
     }
+
+    const injected = await injectContentScript(tab.id).catch(() => false);
+    if (injected && (await tryStartSelection(tab.id))) {
+      setStatus('已进入框选模式，请在页面中拖拽选择文字区域。');
+      return;
+    }
+
+    setStatus('无法在此页面框选：请刷新页面后重试；chrome://、扩展商店、PDF 等页面不支持。');
   };
 
   const removeItem = async (createdAt: number) => {
@@ -62,6 +132,7 @@ export default function App() {
     setActiveCreatedAt((current) =>
       current === createdAt ? (next[0]?.createdAt ?? null) : current,
     );
+    ocrCache.current.delete(createdAt);
     await saveHistory(next);
     setStatus('已删除该条截取记录。');
   };
@@ -70,7 +141,65 @@ export default function App() {
     await clearHistory();
     setHistory([]);
     setActiveCreatedAt(null);
+    ocrCache.current.clear();
     setStatus('历史记录已清空。');
+  };
+
+  const retryOcr = () => {
+    if (activeId === null) return;
+    ocrCache.current.delete(activeId);
+    setRetryToken((value) => value + 1);
+  };
+
+  const copyOcrText = async () => {
+    const text = ocrState?.result?.text;
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus('已复制识别文本。');
+    } catch {
+      setStatus('复制失败，请手动选择文本。');
+    }
+  };
+
+  const renderOcr = () => {
+    if (!activeSelection) {
+      return <p className="placeholder">先框选一个区域。</p>;
+    }
+    if (!ocrState || ocrState.createdAt !== activeSelection.createdAt) {
+      return <p className="placeholder">准备识别…</p>;
+    }
+    if (ocrState.status === 'running') {
+      const percent = Math.round(Math.min(1, Math.max(0, ocrState.progress)) * 100);
+      return (
+        <div className="ocr-progress">
+          <div className="progress-track">
+            <div className="progress-bar" style={{ width: `${percent}%` }} />
+          </div>
+          <span className="progress-label">
+            {ocrProgressLabel(ocrState.statusText)} {percent}%
+          </span>
+        </div>
+      );
+    }
+    if (ocrState.status === 'error') {
+      return <p className="ocr-error">识别失败：{ocrState.error ?? '未知错误'}</p>;
+    }
+
+    const result = ocrState.result;
+    if (!result) {
+      return <p className="placeholder">暂无结果。</p>;
+    }
+
+    return (
+      <div className="ocr-result">
+        <pre className="ocr-text">{result.text || '（未识别到文字）'}</pre>
+        <p className="ocr-meta">
+          置信度 {Math.round(result.confidence)}% · {result.engine} · {result.durationMs}ms
+        </p>
+      </div>
+    );
   };
 
   return (
@@ -85,6 +214,25 @@ export default function App() {
       </button>
 
       <p className="status">{status}</p>
+
+      <section className="ocr">
+        <div className="result-head">
+          <h2>识别结果（日文）</h2>
+          <div className="head-actions">
+            {ocrState?.status === 'done' && ocrState.result?.text && (
+              <button className="ghost" onClick={() => void copyOcrText()} type="button">
+                复制
+              </button>
+            )}
+            {activeSelection && (
+              <button className="ghost" onClick={retryOcr} type="button">
+                重新识别
+              </button>
+            )}
+          </div>
+        </div>
+        {renderOcr()}
+      </section>
 
       <section className="result">
         <div className="result-head">
@@ -171,6 +319,40 @@ export default function App() {
       </footer>
     </main>
   );
+}
+
+async function tryStartSelection(tabId: number): Promise<boolean> {
+  try {
+    await browser.tabs.sendMessage(tabId, { type: 'START_SELECTION' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function injectContentScript(tabId: number): Promise<boolean> {
+  const manifest = browser.runtime.getManifest();
+  const files = (manifest.content_scripts ?? []).flatMap((entry) => entry.js ?? []);
+  if (files.length === 0) {
+    return false;
+  }
+
+  await chrome.scripting.executeScript({ target: { tabId }, files });
+  return true;
+}
+
+function ocrProgressLabel(status?: string): string {
+  const labels: Record<string, string> = {
+    'loading tesseract core': '加载 OCR 引擎',
+    'loading language traineddata': '加载日语模型',
+    'initializing tesseract': '初始化 OCR',
+    'recognizing text': '识别文字',
+  };
+
+  if (!status) {
+    return '识别中';
+  }
+  return labels[status] ?? status;
 }
 
 function mergeHistory(

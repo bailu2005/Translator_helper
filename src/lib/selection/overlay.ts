@@ -6,7 +6,9 @@ export function startSelectionOverlay(): Promise<Rect | null> {
   return new Promise((resolve) => {
     const host = document.createElement('div');
     host.setAttribute('data-translator-helper', 'overlay');
-    host.style.cssText = 'all: initial; position: fixed; inset: 0; z-index: 2147483647;';
+    host.tabIndex = -1;
+    host.style.cssText =
+      'all: initial; position: fixed; inset: 0; z-index: 2147483647; outline: none;';
 
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
@@ -27,35 +29,66 @@ export function startSelectionOverlay(): Promise<Rect | null> {
         top: 16px;
         left: 50%;
         transform: translateX(-50%);
-        padding: 6px 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 8px 6px 12px;
         border-radius: 999px;
         background: rgba(17, 17, 17, 0.85);
         color: #fff;
         font: 12px/1.4 system-ui, sans-serif;
-        pointer-events: none;
+        pointer-events: auto;
         white-space: nowrap;
       }
+      .cancel {
+        appearance: none;
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        border-radius: 6px;
+        color: #fff;
+        cursor: pointer;
+        font: inherit;
+        padding: 2px 8px;
+      }
+      .cancel:hover { background: rgba(255, 255, 255, 0.15); }
     `;
 
     const surface = document.createElement('div');
     surface.className = 'surface';
     const box = document.createElement('div');
     box.className = 'box';
+
     const hint = document.createElement('div');
     hint.className = 'hint';
-    hint.textContent = '拖拽框选要翻译的区域 · Esc 取消';
+    const hintText = document.createElement('span');
+    hintText.textContent = '拖拽框选 · Esc / 右键取消';
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'cancel';
+    cancelButton.textContent = '取消';
+    hint.append(hintText, cancelButton);
 
     shadow.append(style, surface, box, hint);
     document.documentElement.append(host);
+    host.focus({ preventScroll: true });
 
     let startX = 0;
     let startY = 0;
     let dragging = false;
+    let settled = false;
 
     const finish = (rect: Rect | null) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+
       window.removeEventListener('pointermove', onPointerMove, true);
       window.removeEventListener('pointerup', onPointerUp, true);
+      window.removeEventListener('pointercancel', onPointerCancel, true);
       window.removeEventListener('keydown', onKeyDown, true);
+      window.removeEventListener('contextmenu', onContextMenu, true);
+      host.removeEventListener('keydown', onKeyDown, true);
       host.remove();
       resolve(rect);
     };
@@ -78,6 +111,7 @@ export function startSelectionOverlay(): Promise<Rect | null> {
       }
       event.preventDefault();
       event.stopPropagation();
+      host.focus({ preventScroll: true });
       startX = event.clientX;
       startY = event.clientY;
       dragging = true;
@@ -112,17 +146,42 @@ export function startSelectionOverlay(): Promise<Rect | null> {
       finish({ left, top, width, height });
     };
 
+    const onPointerCancel = () => {
+      dragging = false;
+      finish(null);
+    };
+
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
+        event.stopPropagation();
         finish(null);
       }
     };
 
+    const onContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      finish(null);
+    };
+
+    cancelButton.addEventListener(
+      'click',
+      (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(null);
+      },
+      true,
+    );
+
     surface.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('pointermove', onPointerMove, true);
     window.addEventListener('pointerup', onPointerUp, true);
+    window.addEventListener('pointercancel', onPointerCancel, true);
     window.addEventListener('keydown', onKeyDown, true);
+    window.addEventListener('contextmenu', onContextMenu, true);
+    host.addEventListener('keydown', onKeyDown, true);
   });
 }
 

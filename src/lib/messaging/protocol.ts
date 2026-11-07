@@ -14,7 +14,8 @@ export interface SelectionPayload {
 export type ExtensionMessage =
   | { type: 'START_SELECTION' }
   | { type: 'SELECTION_CROPPED'; payload: SelectionPayload }
-  | { type: 'CAPTURE_VISIBLE' };
+  | { type: 'CAPTURE_VISIBLE' }
+  | { type: 'FETCH_IMAGE'; url: string };
 
 function hasType(message: unknown, type: ExtensionMessage['type']): boolean {
   return (
@@ -38,4 +39,10 @@ export function isCaptureVisible(
   message: unknown,
 ): message is Extract<ExtensionMessage, { type: 'CAPTURE_VISIBLE' }> {
   return hasType(message, 'CAPTURE_VISIBLE');
+}
+
+export function isFetchImage(
+  message: unknown,
+): message is Extract<ExtensionMessage, { type: 'FETCH_IMAGE' }> {
+  return hasType(message, 'FETCH_IMAGE') && typeof (message as { url?: unknown }).url === 'string';
 }

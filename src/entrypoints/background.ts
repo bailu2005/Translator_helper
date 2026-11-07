@@ -1,5 +1,5 @@
 import { appendHistory } from '../lib/history';
-import { isCaptureVisible, isSelectionCropped } from '../lib/messaging/protocol';
+import { isCaptureVisible, isFetchImage, isSelectionCropped } from '../lib/messaging/protocol';
 
 export default defineBackground(() => {
   try {
@@ -31,6 +31,10 @@ export default defineBackground(() => {
       void appendHistory(message.payload).then(() => sendResponse({ ok: true }));
       return true;
     }
+    if (isFetchImage(message)) {
+      void fetchImage(message.url).then(sendResponse);
+      return true;
+    }
     return undefined;
   });
 });
@@ -42,6 +46,39 @@ async function startSelection(tabId: number): Promise<void> {
   } catch {
     // ignore when side panel is unavailable
   }
+}
+
+async function fetchImage(url: string): Promise<{ dataUrl: string | null }> {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return { dataUrl: null };
+    }
+
+    const response = await fetch(url, { credentials: 'include' });
+    if (!response.ok) {
+      return { dataUrl: null };
+    }
+
+    const blob = await response.blob();
+    const base64 = arrayBufferToBase64(await blob.arrayBuffer());
+    const mime = blob.type || 'image/png';
+    return { dataUrl: `data:${mime};base64,${base64}` };
+  } catch {
+    return { dataUrl: null };
+  }
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = '';
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+
+  return btoa(binary);
 }
 
 async function captureVisible(windowId?: number): Promise<{ dataUrl: string | null }> {

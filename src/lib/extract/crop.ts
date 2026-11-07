@@ -30,62 +30,118 @@ export async function cropSelection(selection: Rect): Promise<CropResult | null>
 }
 
 async function cropTarget(target: ImageTarget, selection: Rect): Promise<CropResult | null> {
-  const box = domRectToRect(target.element.getBoundingClientRect());
   const element = target.element;
+  const box = domRectToRect(element.getBoundingClientRect());
+  const imageUrl = getTargetImageUrl(target);
 
-  let naturalWidth = 0;
-  let naturalHeight = 0;
-  let drawable: CanvasImageSource | null = null;
-  let naturalRect: NaturalRect | null = null;
-
-  if (element instanceof HTMLImageElement) {
-    naturalWidth = element.naturalWidth;
-    naturalHeight = element.naturalHeight;
-    drawable = element;
-    naturalRect = mapObjectFitRect(
-      selection,
-      box,
-      naturalWidth,
-      naturalHeight,
-      normalizeObjectFit(getComputedStyle(element).objectFit, 'fill'),
-    );
-  } else if (element instanceof HTMLCanvasElement) {
-    naturalWidth = element.width;
-    naturalHeight = element.height;
-    drawable = element;
-    naturalRect = mapObjectFitRect(selection, box, naturalWidth, naturalHeight, 'fill');
-  } else if (element instanceof HTMLVideoElement) {
-    naturalWidth = element.videoWidth;
-    naturalHeight = element.videoHeight;
-    drawable = element;
-    naturalRect = mapObjectFitRect(
-      selection,
-      box,
-      naturalWidth,
-      naturalHeight,
-      normalizeObjectFit(getComputedStyle(element).objectFit, 'contain'),
-    );
-  } else if (target.kind === 'background' && target.backgroundImageUrl) {
-    const loaded = await loadCorsImage(target.backgroundImageUrl);
-    if (!loaded) {
+  const computeRect = (naturalWidth: number, naturalHeight: number): NaturalRect | null => {
+    if (naturalWidth <= 0 || naturalHeight <= 0) {
       return null;
     }
+    if (element instanceof HTMLImageElement) {
+      return mapObjectFitRect(
+        selection,
+        box,
+        naturalWidth,
+        naturalHeight,
+        normalizeObjectFit(getComputedStyle(element).objectFit, 'fill'),
+      );
+    }
+    if (element instanceof HTMLCanvasElement) {
+      return mapObjectFitRect(selection, box, naturalWidth, naturalHeight, 'fill');
+    }
+    if (element instanceof HTMLVideoElement) {
+      return mapObjectFitRect(
+        selection,
+        box,
+        naturalWidth,
+        naturalHeight,
+        normalizeObjectFit(getComputedStyle(element).objectFit, 'contain'),
+      );
+    }
+    if (target.kind === 'background') {
+      const style = getComputedStyle(element);
+      return mapBackgroundRect(
+        selection,
+        box,
+        naturalWidth,
+        naturalHeight,
+        style.backgroundSize,
+        style.backgroundPosition,
+      );
+    }
+    return null;
+  };
 
-    const style = getComputedStyle(element);
-    naturalWidth = loaded.naturalWidth;
-    naturalHeight = loaded.naturalHeight;
-    drawable = loaded;
-    naturalRect = mapBackgroundRect(
-      selection,
-      box,
-      naturalWidth,
-      naturalHeight,
-      style.backgroundSize,
-      style.backgroundPosition,
+  if (element instanceof HTMLImageElement) {
+    const result = await renderCrop(
+      element,
+      computeRect(element.naturalWidth, element.naturalHeight),
+      target.kind,
     );
+    if (result) {
+      return result;
+    }
+  } else if (element instanceof HTMLCanvasElement) {
+    const result = await renderCrop(
+      element,
+      computeRect(element.width, element.height),
+      target.kind,
+    );
+    if (result) {
+      return result;
+    }
+  } else if (element instanceof HTMLVideoElement) {
+    const result = await renderCrop(
+      element,
+      computeRect(element.videoWidth, element.videoHeight),
+      target.kind,
+    );
+    if (result) {
+      return result;
+    }
+  } else if (target.kind === 'background' && imageUrl) {
+    const loaded = await loadCorsImage(imageUrl);
+    if (loaded) {
+      const result = await renderCrop(
+        loaded,
+        computeRect(loaded.naturalWidth, loaded.naturalHeight),
+        target.kind,
+      );
+      if (result) {
+        return result;
+      }
+    }
   }
 
-  if (!drawable || !naturalRect || naturalWidth <= 0 || naturalHeight <= 0) {
+  // Cross-origin images taint the canvas, so fetch the original bytes via the
+  // background service worker (which has host permissions) and crop from that.
+  if (imageUrl) {
+    const fetched = await fetchImageViaBackground(imageUrl);
+    if (fetched) {
+      const image = await loadDataUrlImage(fetched);
+      if (image) {
+        const result = await renderCrop(
+          image,
+          computeRect(image.naturalWidth, image.naturalHeight),
+          target.kind,
+        );
+        if (result) {
+          return result;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+async function renderCrop(
+  source: CanvasImageSource,
+  naturalRect: NaturalRect | null,
+  sourceKind: ImageKind,
+): Promise<CropResult | null> {
+  if (!naturalRect) {
     return null;
   }
 
@@ -98,17 +154,21 @@ async function cropTarget(target: ImageTarget, selection: Rect): Promise<CropRes
   }
 
   context.imageSmoothingEnabled = true;
-  context.drawImage(
-    drawable,
-    naturalRect.sx,
-    naturalRect.sy,
-    naturalRect.sw,
-    naturalRect.sh,
-    0,
-    0,
-    naturalRect.sw,
-    naturalRect.sh,
-  );
+  try {
+    context.drawImage(
+      source,
+      naturalRect.sx,
+      naturalRect.sy,
+      naturalRect.sw,
+      naturalRect.sh,
+      0,
+      0,
+      naturalRect.sw,
+      naturalRect.sh,
+    );
+  } catch {
+    return null;
+  }
 
   try {
     const dataUrl = canvas.toDataURL('image/png');
@@ -117,7 +177,7 @@ async function cropTarget(target: ImageTarget, selection: Rect): Promise<CropRes
       dataUrl: scaled.dataUrl,
       width: scaled.width,
       height: scaled.height,
-      source: target.kind,
+      source: sourceKind,
       naturalRect,
     };
   } catch {
@@ -158,13 +218,32 @@ async function cropViewport(selection: Rect): Promise<CropResult | null> {
 
   context.drawImage(screenshot, sx, sy, sw, sh, 0, 0, sw, sh);
 
+  const scaled = await maybeDownscale(canvas.toDataURL('image/png'), sw, sh);
   return {
-    dataUrl: canvas.toDataURL('image/png'),
-    width: sw,
-    height: sh,
+    dataUrl: scaled.dataUrl,
+    width: scaled.width,
+    height: scaled.height,
     source: 'viewport',
     naturalRect: { sx, sy, sw, sh },
   };
+}
+
+function getTargetImageUrl(target: ImageTarget): string | null {
+  if (target.element instanceof HTMLImageElement) {
+    return target.element.currentSrc || target.element.src || null;
+  }
+  if (target.kind === 'background') {
+    return target.backgroundImageUrl ?? null;
+  }
+  return null;
+}
+
+async function fetchImageViaBackground(url: string): Promise<string | null> {
+  const response = await browser.runtime
+    .sendMessage({ type: 'FETCH_IMAGE', url })
+    .catch(() => null);
+
+  return (response as { dataUrl?: string | null } | null)?.dataUrl ?? null;
 }
 
 function normalizeObjectFit(value: string, fallback: ObjectFit): ObjectFit {

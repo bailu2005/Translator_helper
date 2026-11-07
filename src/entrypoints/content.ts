@@ -2,15 +2,25 @@ import { cropSelection } from '../lib/extract/crop';
 import { isStartSelection, type SelectionPayload } from '../lib/messaging/protocol';
 import { showToast, startSelectionOverlay } from '../lib/selection/overlay';
 
+const READY_KEY = '__translatorHelperContentReady';
+
 let selecting = false;
 
 export default defineContentScript({
   matches: ['<all_urls>'],
   main() {
-    browser.runtime.onMessage.addListener((message) => {
+    const readyWindow = window as unknown as Record<string, unknown>;
+    if (readyWindow[READY_KEY]) {
+      return;
+    }
+    readyWindow[READY_KEY] = true;
+
+    browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (isStartSelection(message)) {
         void runSelection();
+        sendResponse({ ok: true });
       }
+      return undefined;
     });
   },
 });
@@ -43,7 +53,7 @@ async function runSelection(): Promise<void> {
     };
 
     await browser.runtime.sendMessage({ type: 'SELECTION_CROPPED', payload }).catch(() => {});
-    showToast(`已截取 ${crop.width}×${crop.height} 区域，下一步接入 OCR。`);
+    showToast(`已截取 ${crop.width}×${crop.height} 区域，正在识别日文…`);
   } finally {
     selecting = false;
   }

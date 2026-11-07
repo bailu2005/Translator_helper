@@ -61,14 +61,11 @@ button {
 }
 
 .result,
+.ocr,
 .history {
   border: 1px solid rgba(127, 127, 127, 0.25);
   border-radius: 8px;
   padding: 12px;
-}
-
-.result {
-  flex: 1;
 }
 
 .result-head {
@@ -82,6 +79,11 @@ button {
   font-size: 13px;
   margin: 0;
   opacity: 0.7;
+}
+
+.head-actions {
+  display: flex;
+  gap: 4px;
 }
 
 .placeholder {
@@ -121,6 +123,52 @@ button {
 
 .preview dd {
   margin: 0;
+}
+
+.ocr-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.progress-track {
+  background: rgba(127, 127, 127, 0.2);
+  border-radius: 999px;
+  height: 6px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  background: #2f6feb;
+  height: 100%;
+  transition: width 0.2s ease;
+}
+
+.progress-label {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.ocr-text {
+  font-family: 'Yu Gothic', 'Meiryo', 'Microsoft YaHei', monospace;
+  font-size: 15px;
+  line-height: 1.7;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.ocr-meta {
+  font-size: 11px;
+  margin: 8px 0 0;
+  opacity: 0.55;
+}
+
+.ocr-error {
+  color: #c0392b;
+  font-size: 13px;
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .history-list {

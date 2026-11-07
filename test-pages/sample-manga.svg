@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="800" viewBox="0 0 640 800">
+  <defs>
+    <pattern id="tone" width="12" height="12" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#cfc7b8" />
+    </pattern>
+  </defs>
+
+  <rect width="640" height="800" fill="#eee8dc" />
+  <rect width="640" height="800" fill="url(#tone)" />
+
+  <ellipse cx="330" cy="340" rx="230" ry="210" fill="#ffffff" stroke="#1d1d1d" stroke-width="5" />
+  <path d="M470 500 L545 625 L415 560 Z" fill="#ffffff" stroke="#1d1d1d" stroke-width="5" stroke-linejoin="round" />
+
+  <g fill="#111111" font-family="'Yu Gothic', 'Meiryo', 'MS Gothic', sans-serif" font-size="44" font-weight="600">
+    <text x="420" y="180">こ</text>
+    <text x="420" y="242">ん</text>
+    <text x="420" y="304">に</text>
+    <text x="420" y="366">ち</text>
+    <text x="420" y="428">は</text>
+
+    <text x="350" y="180">元</text>
+    <text x="350" y="242">気</text>
+    <text x="350" y="304">で</text>
+    <text x="350" y="366">す</text>
+    <text x="350" y="428">か</text>
+  </g>
+</svg>

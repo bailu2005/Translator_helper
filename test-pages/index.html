@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Translator Helper 测试页</title>
+    <style>
+      body {
+        background: #faf7f2;
+        color: #222;
+        font-family: system-ui, 'Microsoft YaHei', sans-serif;
+        margin: 0;
+      }
+
+      main {
+        margin: 0 auto;
+        max-width: 1100px;
+        padding: 24px;
+      }
+
+      h1 {
+        font-size: 20px;
+      }
+
+      .tips {
+        background: #fff;
+        border: 1px solid #e2dccf;
+        border-radius: 10px;
+        font-size: 14px;
+        line-height: 1.7;
+        padding: 12px 16px;
+      }
+
+      .tips p {
+        margin: 4px 0;
+      }
+
+      .grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 24px;
+        margin-top: 24px;
+      }
+
+      .case {
+        background: #fff;
+        border: 1px solid #e2dccf;
+        border-radius: 12px;
+        padding: 12px;
+      }
+
+      .case h2 {
+        font-size: 14px;
+        margin: 0 0 10px;
+      }
+
+      .sample-img {
+        border-radius: 8px;
+        display: block;
+        height: 400px;
+        width: 320px;
+      }
+
+      .bg-sample {
+        background-image: url('./sample-manga.svg');
+        background-position: center;
+        background-size: cover;
+        border-radius: 8px;
+        height: 400px;
+        width: 320px;
+      }
+
+      canvas {
+        border-radius: 8px;
+        display: block;
+        height: 400px;
+        width: 320px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Translator Helper 测试页</h1>
+      <div class="tips">
+        <p>1. 在 chrome://extensions 重新加载扩展，然后刷新本页。</p>
+        <p>2. 点扩展图标 → 「打开侧边栏」→「开始框选」。</p>
+        <p>3. 在下面任意示例的气泡文字上拖框，侧边栏应显示截取预览。</p>
+        <p>4. 按 Esc 可取消框选。</p>
+      </div>
+
+      <div class="grid">
+        <section class="case">
+          <h2>① &lt;img&gt; 图片</h2>
+          <img class="sample-img" src="./sample-manga.svg" alt="漫画示例图片" />
+        </section>
+
+        <section class="case">
+          <h2>② background-image</h2>
+          <div class="bg-sample"></div>
+        </section>
+
+        <section class="case">
+          <h2>③ Canvas</h2>
+          <canvas id="canvas" width="640" height="800"></canvas>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const canvas = document.getElementById('canvas');
+      const context = canvas.getContext('2d');
+
+      context.fillStyle = '#eee8dc';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+
+      context.fillStyle = '#ffffff';
+      context.strokeStyle = '#1d1d1d';
+      context.lineWidth = 5;
+      context.beginPath();
+      context.ellipse(330, 340, 230, 210, 0, 0, Math.PI * 2);
+      context.fill();
+      context.stroke();
+
+      context.fillStyle = '#111111';
+      context.font = '600 44px "Yu Gothic", "Meiryo", sans-serif';
+      context.textAlign = 'center';
+
+      ['こ', 'ん', 'に', 'ち', 'は'].forEach((char, index) => {
+        context.fillText(char, 420, 180 + index * 62);
+      });
+      ['元', '気', 'で', 'す', 'か'].forEach((char, index) => {
+        context.fillText(char, 350, 180 + index * 62);
+      });
+    </script>
+  </body>
+</html>

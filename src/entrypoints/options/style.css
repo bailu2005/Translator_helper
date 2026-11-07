@@ -1,0 +1,63 @@
+:root {
+  color-scheme: light dark;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Microsoft YaHei',
+    sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 420px;
+  padding: 32px 16px;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  gap: 6px;
+}
+
+input,
+select {
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 8px;
+  font: inherit;
+  padding: 8px 10px;
+}
+
+button {
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 12px;
+  width: fit-content;
+}
+
+.primary {
+  background: #2f6feb;
+  border-color: #2f6feb;
+  color: #fff;
+}
+
+.saved {
+  color: #2e9b57;
+  font-size: 13px;
+  margin: 0;
+}

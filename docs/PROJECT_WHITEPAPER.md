@@ -43,21 +43,21 @@ Chrome/Edge 浏览器扩展：用户手动框选网页中的**日语图片 / 漫
 
 ## 2. 关键决策记录（ADR）
 
-| ID | 主题 | 决策 | 状态 |
-|---|---|---|---|
-| D-01 | 目标平台 | Chrome/Edge，Manifest V3；架构预留 Firefox | 已定 |
-| D-02 | 构建框架 | WXT + TypeScript（一套代码生成多浏览器 manifest） | 待确认 |
-| D-03 | UI 框架 | React | 待确认 |
-| D-04 | 包管理器 | npm（本机 PowerShell 限制，使用 `npm.cmd`） | 已定 |
-| D-05 | 展示位置 | Chrome 原生 `chrome.sidePanel` 侧边栏 | 已定 |
-| D-06 | 一期 OCR | Tesseract.js + `jpn_vert`（竖排日语） | 已定 |
-| D-07 | 二期 OCR | manga-ocr 导出 ONNX + WebGPU/ONNX Runtime Web | 已定（后续） |
-| D-08 | 选区方式 | 手动框选，不做自动气泡检测 | 已定 |
-| D-09 | 翻译源 | 默认免费源；可选术语表/离线词典/LLM | 已定（具体源待确认） |
-| D-10 | 图片处理 | 本地裁剪 + 本地 OCR，不上传 | 已定 |
-| D-11 | 仓库位置 | `D:\Translator_helper` 独立 git 仓库 | 已定 |
-| D-12 | 跨浏览器 API | `webextension-polyfill` 的 `browser.*` + 适配层 | 已定 |
-| D-13 | 许可证 | MIT | 已定 |
+| ID   | 主题         | 决策                                              | 状态                 |
+| ---- | ------------ | ------------------------------------------------- | -------------------- |
+| D-01 | 目标平台     | Chrome/Edge，Manifest V3；架构预留 Firefox        | 已定                 |
+| D-02 | 构建框架     | WXT + TypeScript（一套代码生成多浏览器 manifest） | 待确认               |
+| D-03 | UI 框架      | React                                             | 待确认               |
+| D-04 | 包管理器     | npm（本机 PowerShell 限制，使用 `npm.cmd`）       | 已定                 |
+| D-05 | 展示位置     | Chrome 原生 `chrome.sidePanel` 侧边栏             | 已定                 |
+| D-06 | 一期 OCR     | Tesseract.js + `jpn_vert`（竖排日语）             | 已定                 |
+| D-07 | 二期 OCR     | manga-ocr 导出 ONNX + WebGPU/ONNX Runtime Web     | 已定（后续）         |
+| D-08 | 选区方式     | 手动框选，不做自动气泡检测                        | 已定                 |
+| D-09 | 翻译源       | 默认免费源；可选术语表/离线词典/LLM               | 已定（具体源待确认） |
+| D-10 | 图片处理     | 本地裁剪 + 本地 OCR，不上传                       | 已定                 |
+| D-11 | 仓库位置     | `D:\Translator_helper` 独立 git 仓库              | 已定                 |
+| D-12 | 跨浏览器 API | `webextension-polyfill` 的 `browser.*` + 适配层   | 已定                 |
+| D-13 | 许可证       | MIT                                               | 已定                 |
 
 ---
 
@@ -142,12 +142,12 @@ popup（开关、语言、快捷入口）      options（Provider、Key、术语
 
 ### 5.2 像素获取策略（按优先级）
 
-| 优先级 | 场景 | 做法 |
-|---|---|---|
-| 1 | 同源图片 / 允许 CORS | `canvas.drawImage` 从原图裁剪，分辨率最高 |
-| 2 | 跨域图片被污染（tainted） | 后台 `fetch` 原图字节（可选主机权限）+ `createImageBitmap` 裁剪 |
-| 3 | `background-image` | 读 `getComputedStyle().backgroundImage` 解析 URL，按上面策略处理 |
-| 4 | 无源（WebGL canvas、部分视频帧） | `chrome.tabs.captureVisibleTab` 截当前视口，**本地**裁剪（只本地处理，不上传） |
+| 优先级 | 场景                             | 做法                                                                           |
+| ------ | -------------------------------- | ------------------------------------------------------------------------------ |
+| 1      | 同源图片 / 允许 CORS             | `canvas.drawImage` 从原图裁剪，分辨率最高                                      |
+| 2      | 跨域图片被污染（tainted）        | 后台 `fetch` 原图字节（可选主机权限）+ `createImageBitmap` 裁剪                |
+| 3      | `background-image`               | 读 `getComputedStyle().backgroundImage` 解析 URL，按上面策略处理               |
+| 4      | 无源（WebGL canvas、部分视频帧） | `chrome.tabs.captureVisibleTab` 截当前视口，**本地**裁剪（只本地处理，不上传） |
 
 > 注意：跨域图片直接 `drawImage` 会污染 canvas，`toDataURL/getImageData` 会抛错；必须走后台 fetch 或截图兜底。
 
@@ -201,22 +201,22 @@ interface TranslationProvider {
 
 interface TranslateInput {
   text: string;
-  sourceLang?: string;   // 默认 auto / ja
-  targetLang: string;    // 默认 zh-CN
-  context?: string;      // 相邻气泡上下文
+  sourceLang?: string; // 默认 auto / ja
+  targetLang: string; // 默认 zh-CN
+  context?: string; // 相邻气泡上下文
   glossary?: GlossaryEntry[];
 }
 ```
 
 ### 6.2 免费翻译源（待最终选定）
 
-| 方案 | 优点 | 缺点 |
-|---|---|---|
+| 方案                       | 优点               | 缺点                                  |
+| -------------------------- | ------------------ | ------------------------------------- |
 | Chrome 内置 Translator API | 本地、免费、隐私好 | 版本/扩展环境可用性需实测，语言对有限 |
-| LibreTranslate | 开源，可自建，免费 | 公共实例限流、质量一般 |
-| MyMemory | 免费配额，接入简单 | 配额小、质量一般 |
-| 有道/百度/腾讯翻译开放平台 | 质量较好 | 需注册 Key，有额度限制 |
-| Google 翻译非官方接口 | 质量好 | 违反 ToS、不稳定，**不采用** |
+| LibreTranslate             | 开源，可自建，免费 | 公共实例限流、质量一般                |
+| MyMemory                   | 免费配额，接入简单 | 配额小、质量一般                      |
+| 有道/百度/腾讯翻译开放平台 | 质量较好           | 需注册 Key，有额度限制                |
+| Google 翻译非官方接口      | 质量好             | 违反 ToS、不稳定，**不采用**          |
 
 > 一期建议：以「Chrome 内置 API（可用时）+ 免费公共接口兜底」实现 `free` Provider，并在 UI 中说明质量限制。漫画对话对上下文敏感，正式质量建议用户配置 LLM。
 
@@ -267,15 +267,15 @@ docs/                  项目文档（含本白皮书）
 
 ### 7.2 消息协议（草案）
 
-| 消息 | 方向 | 说明 |
-|---|---|---|
-| `START_SELECTION` | background → content | 进入框选模式 |
-| `REGION_SELECTED` | content → background | 携带裁剪图 `Blob`/`ImageBitmap` 元数据 |
-| `OCR_RESULT` | content → background | 日文文本、bbox、置信度 |
-| `TRANSLATE_REQUEST` | background → provider | 文本 + 上下文 + 语言 |
-| `TRANSLATE_RESULT` | background → sidepanel | 原文/译文/引擎/耗时 |
-| `SETTINGS_CHANGED` | options → background/content | 设置变更广播 |
-| `HISTORY_UPDATED` | background → sidepanel | 会话历史更新 |
+| 消息                | 方向                         | 说明                                   |
+| ------------------- | ---------------------------- | -------------------------------------- |
+| `START_SELECTION`   | background → content         | 进入框选模式                           |
+| `REGION_SELECTED`   | content → background         | 携带裁剪图 `Blob`/`ImageBitmap` 元数据 |
+| `OCR_RESULT`        | content → background         | 日文文本、bbox、置信度                 |
+| `TRANSLATE_REQUEST` | background → provider        | 文本 + 上下文 + 语言                   |
+| `TRANSLATE_RESULT`  | background → sidepanel       | 原文/译文/引擎/耗时                    |
+| `SETTINGS_CHANGED`  | options → background/content | 设置变更广播                           |
+| `HISTORY_UPDATED`   | background → sidepanel       | 会话历史更新                           |
 
 > 大对象（图片 Blob）优先用 `structuredClone` 支持的消息传递或 `OffscreenCanvas` 在内容脚本内处理完再传文本，避免大块数据反复跨进程。
 
@@ -285,14 +285,14 @@ docs/                  项目文档（含本白皮书）
 
 ### 8.1 权限（最小化）
 
-| 权限 | 用途 |
-|---|---|
-| `sidePanel` | 侧边栏 |
-| `storage` | 设置、缓存、术语表 |
-| `activeTab` | 用户触发时访问当前页 |
-| `scripting` | 动态注入内容脚本 |
-| `contextMenus` | 右键入口 |
-| `offscreen`（可能需要） | 特定后台处理 |
+| 权限                        | 用途                                |
+| --------------------------- | ----------------------------------- |
+| `sidePanel`                 | 侧边栏                              |
+| `storage`                   | 设置、缓存、术语表                  |
+| `activeTab`                 | 用户触发时访问当前页                |
+| `scripting`                 | 动态注入内容脚本                    |
+| `contextMenus`              | 右键入口                            |
+| `offscreen`（可能需要）     | 特定后台处理                        |
 | `optional_host_permissions` | 按站点申请跨域图片 fetch 与翻译 API |
 
 - 尽量不申请 `<all_urls>`；跨域图片/翻译 API 用**可选权限**按需申请。
@@ -402,16 +402,16 @@ docs/                  项目文档（含本白皮书）
 
 ## 12. 风险与对策
 
-| 风险 | 影响 | 对策 |
-|---|---|---|
-| 跨域图片污染 canvas | 无法裁剪 | 后台 fetch + 可选权限；截图本地兜底 |
-| Tesseract 对漫画竖排/手写体识别差 | 译文质量低 | 预处理增强；二期换 manga-ocr；提示用户缩小框选 |
-| 假名注音混入 | 译文噪声 | 注音检测过滤 + 置信度阈值 |
-| 免费翻译源不稳定/质量差 | 体验差 | 多源兜底；引导配置 LLM |
-| MV3 Service Worker 生命周期 | 状态丢失 | 状态持久化 + 消息重建 |
-| WASM/模型体积大 | 商店审核/加载慢 | 懒加载、缓存、按需下载 |
-| 权限过大被商店拒绝 | 上架失败 | 可选权限、最小化申请、隐私说明 |
-| 外部 API 政策/ToS | 合规风险 | 不用非官方 Google 接口；明确来源 |
+| 风险                              | 影响            | 对策                                           |
+| --------------------------------- | --------------- | ---------------------------------------------- |
+| 跨域图片污染 canvas               | 无法裁剪        | 后台 fetch + 可选权限；截图本地兜底            |
+| Tesseract 对漫画竖排/手写体识别差 | 译文质量低      | 预处理增强；二期换 manga-ocr；提示用户缩小框选 |
+| 假名注音混入                      | 译文噪声        | 注音检测过滤 + 置信度阈值                      |
+| 免费翻译源不稳定/质量差           | 体验差          | 多源兜底；引导配置 LLM                         |
+| MV3 Service Worker 生命周期       | 状态丢失        | 状态持久化 + 消息重建                          |
+| WASM/模型体积大                   | 商店审核/加载慢 | 懒加载、缓存、按需下载                         |
+| 权限过大被商店拒绝                | 上架失败        | 可选权限、最小化申请、隐私说明                 |
+| 外部 API 政策/ToS                 | 合规风险        | 不用非官方 Google 接口；明确来源               |
 
 ---
 
@@ -432,6 +432,6 @@ docs/                  项目文档（含本白皮书）
 
 ## 14. 变更记录
 
-| 版本 | 日期 | 变更 |
-|---|---|---|
+| 版本 | 日期       | 变更                                                           |
+| ---- | ---------- | -------------------------------------------------------------- |
 | v0.1 | 2026-11-07 | 初始白皮书：确立图片优先、本地 OCR、日语漫画、侧边栏、Git 规划 |

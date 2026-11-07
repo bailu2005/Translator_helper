@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+.output/
+.wxt/
+*.zip
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# caches
+.cache/
+.temp/
+*.tsbuildinfo
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# OCR / model assets (large, downloaded at runtime)
+models/
+*.onnx
+*.traineddata
+
+# editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*

@@ -46,22 +46,41 @@ button {
   color: #fff;
 }
 
+.ghost {
+  background: transparent;
+  border: none;
+  color: #2f6feb;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
 .status {
   font-size: 13px;
   margin: 0;
   opacity: 0.8;
 }
 
-.result {
+.result,
+.history {
   border: 1px solid rgba(127, 127, 127, 0.25);
   border-radius: 8px;
-  flex: 1;
   padding: 12px;
 }
 
-.result h2 {
+.result {
+  flex: 1;
+}
+
+.result-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.result-head h2 {
   font-size: 13px;
-  margin: 0 0 8px;
+  margin: 0;
   opacity: 0.7;
 }
 
@@ -102,6 +121,65 @@ button {
 
 .preview dd {
   margin: 0;
+}
+
+.history-list {
+  display: flex;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  overflow-x: auto;
+  padding: 2px;
+}
+
+.history-list li {
+  flex: 0 0 auto;
+  position: relative;
+}
+
+.thumb {
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  width: 76px;
+}
+
+.history-list li.active .thumb {
+  border-color: #2f6feb;
+}
+
+.thumb img {
+  display: block;
+  height: 60px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.thumb span {
+  font-size: 10px;
+  opacity: 0.6;
+  padding: 2px 0;
+  text-align: center;
+}
+
+.remove {
+  background: rgba(17, 17, 17, 0.75);
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  height: 18px;
+  line-height: 1;
+  padding: 0;
+  position: absolute;
+  right: -6px;
+  top: -6px;
+  width: 18px;
 }
 
 footer {

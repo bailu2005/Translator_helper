@@ -1,4 +1,5 @@
 import { cropSelection } from '../lib/extract/crop';
+import { appendHistory } from '../lib/history';
 import { isStartSelection, type SelectionPayload } from '../lib/messaging/protocol';
 import { showToast, startSelectionOverlay } from '../lib/selection/overlay';
 
@@ -42,12 +43,7 @@ async function runSelection(): Promise<void> {
       createdAt: Date.now(),
     };
 
-    try {
-      await browser.storage.session.set({ lastSelection: payload });
-    } catch {
-      // session storage may be unavailable
-    }
-
+    await appendHistory(payload);
     await browser.runtime.sendMessage({ type: 'SELECTION_CROPPED', payload }).catch(() => {});
     showToast(`已截取 ${crop.width}×${crop.height} 区域，下一步接入 OCR。`);
   } finally {

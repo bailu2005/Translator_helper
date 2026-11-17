@@ -46,6 +46,7 @@ Chrome/Edge → `chrome://extensions` → 加载已解压的扩展程序 → 选
 
 ## 文档
 
+- [新会话接续指南](docs/HANDOFF.md)
 - [项目搭建白皮书](docs/PROJECT_WHITEPAPER.md) —— 设计、架构、决策
 - [工程日志](docs/ENGINEERING_LOG.md) —— 进度、问题、下一步
 - [本地 manga-ocr 服务](ocr-service/README.md)

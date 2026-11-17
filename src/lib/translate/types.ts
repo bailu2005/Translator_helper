@@ -19,6 +19,7 @@ export interface TranslationInput {
   context?: TranslationContext[];
   glossary?: GlossaryEntry[];
   onProgress?: TranslationProgressListener;
+  onToken?: (text: string) => void;
 }
 
 export interface TranslationResult {

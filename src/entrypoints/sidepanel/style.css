@@ -63,6 +63,7 @@ button {
 .result,
 .ocr,
 .translation,
+.learning,
 .history {
   border: 1px solid rgba(127, 127, 127, 0.25);
   border-radius: 8px;
@@ -236,6 +237,65 @@ button {
   margin: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.learn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.learn-word,
+.learn-grammar {
+  background: rgba(127, 127, 127, 0.06);
+  border: 1px solid rgba(127, 127, 127, 0.18);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.learn-word-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.learn-surface {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.learn-reading {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.learn-pos {
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.learn-pattern {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.learn-meaning {
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+
+.learn-detail {
+  font-size: 12px;
+  margin: 4px 0 0;
+  opacity: 0.75;
+}
+
+.learn-example {
+  font-size: 12px;
+  margin: 4px 0 0;
+  opacity: 0.65;
 }
 
 .ocr-error {

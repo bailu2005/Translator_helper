@@ -11,6 +11,14 @@ import {
   type SelectionPayload,
   type SelectionSource,
 } from '../../lib/messaging/protocol';
+import {
+  buildLearningCacheKey,
+  deleteCachedLearningCard,
+  getCachedLearningCard,
+  setCachedLearningCard,
+} from '../../lib/learn/cache';
+import { generateLearningCard } from '../../lib/learn/llm';
+import type { LearningCard } from '../../lib/learn/types';
 import { recognizeSelection } from '../../lib/ocr/engine';
 import type { OcrOrientation, ReadingOrder } from '../../lib/ocr/order';
 import { checkOcrService, type ServiceStatus } from '../../lib/ocr/service';
@@ -52,6 +60,16 @@ interface TranslationState {
   error?: string;
 }
 
+interface LearningState {
+  createdAt: number;
+  status: 'running' | 'done' | 'error';
+  statusText?: string;
+  card?: LearningCard;
+  engine?: string;
+  durationMs?: number;
+  error?: string;
+}
+
 export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [history, setHistory] = useState<SelectionPayload[]>([]);
@@ -68,6 +86,9 @@ export default function App() {
     token: number;
   } | null>(null);
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([]);
+  const [learningState, setLearningState] = useState<LearningState | null>(null);
+  const [learningCollapsed, setLearningCollapsed] = useState(false);
+  const learningRequestId = useRef(0);
   const ocrCache = useRef(new Map<string, OcrResult>());
   const recentPairs = useRef<{ createdAt: number; source: string; translation?: string }[]>([]);
 
@@ -93,6 +114,17 @@ export default function App() {
     }
     return buildTranslationCacheKey(recognizedText, targetLang, settings, glossary);
   }, [settings, recognizedText, targetLang, glossary]);
+  const translationText = translationState?.status === 'done' ? (translationState.text ?? '') : '';
+  const llmConfigured = Boolean(settings?.llmBaseUrl && settings?.llmModel);
+  const canGenerateLearning = Boolean(
+    llmConfigured && activeId !== null && recognizedText && translationText,
+  );
+  const learningCacheKey = useMemo(() => {
+    if (!settings || !recognizedText || !translationText) {
+      return null;
+    }
+    return buildLearningCacheKey(recognizedText, translationText, targetLang, settings, glossary);
+  }, [settings, recognizedText, translationText, targetLang, glossary]);
 
   useEffect(() => {
     void loadSettings().then((loaded) => {
@@ -279,6 +311,16 @@ export default function App() {
             targetLang,
             context,
             glossary,
+            onToken: (partial) => {
+              if (cancelled) {
+                return;
+              }
+              setTranslationState((previous) =>
+                previous && previous.createdAt === activeId
+                  ? { ...previous, text: partial }
+                  : previous,
+              );
+            },
             onProgress: (statusText) => {
               if (cancelled) {
                 return;
@@ -338,6 +380,12 @@ export default function App() {
     settingsReady,
     manualTranslation,
   ]);
+
+  useEffect(() => {
+    learningRequestId.current += 1;
+    setLearningState(null);
+    setLearningCollapsed(false);
+  }, [activeId, translationText, targetLang]);
 
   const startSelection = async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -415,6 +463,102 @@ export default function App() {
       setStatus('已复制译文。');
     } catch {
       setStatus('复制失败，请手动选择文本。');
+    }
+  };
+
+  const generateLearning = async (force = false) => {
+    if (
+      !settings ||
+      activeId === null ||
+      !recognizedText ||
+      !translationText ||
+      !learningCacheKey
+    ) {
+      return;
+    }
+
+    if (!llmConfigured) {
+      setLearningState({
+        createdAt: activeId,
+        status: 'error',
+        error: '请先在设置里配置 LLM（Base URL + 模型）',
+      });
+      return;
+    }
+
+    const capturedId = activeId;
+    const requestId = ++learningRequestId.current;
+
+    if (!force) {
+      const cached = await getCachedLearningCard(learningCacheKey);
+      if (requestId !== learningRequestId.current) {
+        return;
+      }
+      if (cached) {
+        setLearningState({
+          createdAt: capturedId,
+          status: 'done',
+          card: cached.card,
+          engine: cached.engine,
+          durationMs: cached.durationMs,
+        });
+        return;
+      }
+    } else {
+      await deleteCachedLearningCard(learningCacheKey);
+    }
+
+    setLearningState({
+      createdAt: capturedId,
+      status: 'running',
+      statusText: '生成学习卡',
+    });
+
+    const context = recentPairs.current
+      .filter((pair) => pair.createdAt !== capturedId)
+      .slice(-3)
+      .map((pair) => ({ source: pair.source, translation: pair.translation }));
+
+    try {
+      const result = await generateLearningCard(
+        {
+          text: recognizedText,
+          translation: translationText,
+          targetLang,
+          context,
+          glossary,
+        },
+        {
+          baseUrl: settings.llmBaseUrl,
+          model: settings.llmModel,
+          apiKey: settings.llmApiKey,
+        },
+      );
+
+      if (requestId !== learningRequestId.current) {
+        return;
+      }
+
+      await setCachedLearningCard(learningCacheKey, result);
+      setLearningState({
+        createdAt: capturedId,
+        status: 'done',
+        card: result.card,
+        engine: result.engine,
+        durationMs: result.durationMs,
+      });
+      setLearningCollapsed(false);
+      setStatus('学习卡已生成。');
+    } catch (error) {
+      if (requestId !== learningRequestId.current) {
+        return;
+      }
+      setLearningState({
+        createdAt: capturedId,
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      setStatus('学习卡生成失败。');
     }
   };
 
@@ -520,11 +664,16 @@ export default function App() {
     }
     if (translationState.status === 'running') {
       return (
-        <div className="ocr-progress">
-          <div className="progress-track">
-            <div className="progress-bar indeterminate" />
+        <div className="translation-result">
+          {translationState.text ? (
+            <p className="translation-text">{translationState.text}</p>
+          ) : null}
+          <div className="ocr-progress">
+            <div className="progress-track">
+              <div className="progress-bar indeterminate" />
+            </div>
+            <span className="progress-label">{translationState.statusText ?? '翻译中'}…</span>
           </div>
-          <span className="progress-label">{translationState.statusText ?? '翻译中'}…</span>
         </div>
       );
     }
@@ -537,6 +686,77 @@ export default function App() {
         <p className="translation-text">{translationState.text || '（空）'}</p>
         <p className="ocr-meta">
           {translationState.engine} · {translationState.durationMs}ms
+        </p>
+      </div>
+    );
+  };
+
+  const renderLearning = () => {
+    if (!activeSelection) {
+      return <p className="placeholder">先框选一个区域。</p>;
+    }
+    if (ocrState?.status !== 'done' || !recognizedText) {
+      return <p className="placeholder">等待日文识别完成。</p>;
+    }
+    if (translationState?.status !== 'done' || !translationText) {
+      return <p className="placeholder">翻译完成后可生成学习卡。</p>;
+    }
+    if (!llmConfigured) {
+      return <p className="ocr-note">配置 LLM（Base URL + 模型）后可生成词汇/语法讲解。</p>;
+    }
+    if (!learningState || learningState.createdAt !== activeSelection.createdAt) {
+      return <p className="placeholder">点击「生成学习卡」查看词汇与语法讲解。</p>;
+    }
+    if (learningState.status === 'running') {
+      return (
+        <div className="ocr-progress">
+          <div className="progress-track">
+            <div className="progress-bar indeterminate" />
+          </div>
+          <span className="progress-label">{learningState.statusText ?? '生成中'}…</span>
+        </div>
+      );
+    }
+    if (learningState.status === 'error') {
+      return <p className="ocr-error">学习卡生成失败：{learningState.error ?? '未知错误'}</p>;
+    }
+
+    const card = learningState.card;
+    if (!card) {
+      return <p className="placeholder">暂无内容。</p>;
+    }
+    if (learningCollapsed) {
+      return (
+        <p className="placeholder">
+          已生成：{card.words.length} 个词 / {card.grammar.length} 个语法点（点击「展开」查看）
+        </p>
+      );
+    }
+
+    return (
+      <div className="learn-list">
+        {card.words.map((word, index) => (
+          <div className="learn-word" key={`${word.surface}-${index}`}>
+            <div className="learn-word-head">
+              <span className="learn-surface">{word.surface}</span>
+              {word.reading && <span className="learn-reading">{word.reading}</span>}
+              {word.pos && <span className="learn-pos">{word.pos}</span>}
+            </div>
+            {word.meaning && <p className="learn-meaning">{word.meaning}</p>}
+            {word.usage && <p className="learn-detail">用法：{word.usage}</p>}
+            {word.example && <p className="learn-example">例：{word.example}</p>}
+          </div>
+        ))}
+        {card.grammar.map((grammar, index) => (
+          <div className="learn-grammar" key={`${grammar.pattern}-${index}`}>
+            <p className="learn-pattern">{grammar.pattern}</p>
+            {grammar.meaning && <p className="learn-meaning">{grammar.meaning}</p>}
+            {grammar.nuance && <p className="learn-detail">语感：{grammar.nuance}</p>}
+            {grammar.example && <p className="learn-example">例：{grammar.example}</p>}
+          </div>
+        ))}
+        <p className="ocr-meta">
+          {learningState.engine} · {learningState.durationMs}ms
         </p>
       </div>
     );
@@ -634,6 +854,39 @@ export default function App() {
           </div>
         </div>
         {renderTranslation()}
+      </section>
+
+      <section className="learning">
+        <div className="result-head">
+          <h2>学习（词汇 / 语法）</h2>
+          <div className="head-actions">
+            {learningState?.status === 'done' && (
+              <>
+                <button
+                  className="ghost"
+                  onClick={() => setLearningCollapsed((value) => !value)}
+                  type="button"
+                >
+                  {learningCollapsed ? '展开' : '收起'}
+                </button>
+                <button className="ghost" onClick={() => void generateLearning(true)} type="button">
+                  重新生成
+                </button>
+              </>
+            )}
+            {learningState?.status !== 'done' && (
+              <button
+                className="ghost"
+                onClick={() => void generateLearning()}
+                disabled={!canGenerateLearning || learningState?.status === 'running'}
+                type="button"
+              >
+                生成学习卡
+              </button>
+            )}
+          </div>
+        </div>
+        {renderLearning()}
       </section>
 
       <section className="result">

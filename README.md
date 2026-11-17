@@ -15,7 +15,8 @@
 - P2.5 本地 manga-ocr 服务（主引擎，失败回退 Tesseract）✅
 - P3.0 翻译主流程（LLM → Chrome 内置 → MyMemory）✅
 - P3.1 术语表（导入/导出、占位替换、LLM prompt）✅
-- P3.2 LLM 学习卡：待实现
+- P3.2 LLM 流式翻译 + 按需学习卡（词汇/语法）✅
+- P3.3 本地分词基础学习、P3.4 生词本：待实现
 
 ## OCR 架构
 

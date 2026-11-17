@@ -53,6 +53,7 @@ export async function translateWithLlm(
 
   const baseUrl = config.baseUrl.trim().replace(/\/+$/, '');
   const started = performance.now();
+  const stream = Boolean(input.onToken);
   input.onProgress?.('LLM 翻译中');
 
   const controller = new AbortController();
@@ -69,6 +70,7 @@ export async function translateWithLlm(
         model: config.model.trim(),
         temperature: 0.2,
         max_tokens: 600,
+        stream,
         messages: [
           {
             role: 'system',
@@ -94,6 +96,21 @@ export async function translateWithLlm(
       throw new Error(`LLM 返回 ${response.status}${detail ? `: ${detail.slice(0, 200)}` : ''}`);
     }
 
+    const engine = `LLM (${config.model.trim()})`;
+    const contentType = response.headers.get('content-type') ?? '';
+
+    if (input.onToken && stream && response.body && !contentType.includes('application/json')) {
+      const streamed = await readSseStream(response.body, input.onToken);
+      if (!streamed.trim()) {
+        throw new Error('LLM 返回空结果');
+      }
+      return {
+        text: streamed.trim(),
+        engine,
+        durationMs: Math.round(performance.now() - started),
+      };
+    }
+
     const data = (await response.json()) as {
       choices?: { message?: { content?: string } }[];
     };
@@ -104,7 +121,7 @@ export async function translateWithLlm(
 
     return {
       text,
-      engine: `LLM (${config.model.trim()})`,
+      engine,
       durationMs: Math.round(performance.now() - started),
     };
   } catch (error) {
@@ -115,4 +132,51 @@ export async function translateWithLlm(
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function readSseStream(
+  body: ReadableStream<Uint8Array>,
+  onToken: (text: string) => void,
+): Promise<string> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let full = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    let newlineIndex = buffer.indexOf('\n');
+
+    while (newlineIndex >= 0) {
+      const line = buffer.slice(0, newlineIndex).trim();
+      buffer = buffer.slice(newlineIndex + 1);
+
+      if (line.startsWith('data:')) {
+        const payload = line.slice(5).trim();
+        if (payload && payload !== '[DONE]') {
+          try {
+            const json = JSON.parse(payload) as {
+              choices?: { delta?: { content?: string } }[];
+            };
+            const delta = json.choices?.[0]?.delta?.content ?? '';
+            if (delta) {
+              full += delta;
+              onToken(full);
+            }
+          } catch {
+            // ignore malformed SSE payloads
+          }
+        }
+      }
+
+      newlineIndex = buffer.indexOf('\n');
+    }
+  }
+
+  return full;
 }

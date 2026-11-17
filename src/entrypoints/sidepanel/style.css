@@ -21,6 +21,24 @@ body {
   padding: 16px;
 }
 
+.panel-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  justify-content: flex-end;
+}
+
+.header-actions .ghost {
+  white-space: nowrap;
+}
+
 h1 {
   font-size: 18px;
   margin: 0;

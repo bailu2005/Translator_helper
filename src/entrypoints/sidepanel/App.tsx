@@ -414,6 +414,10 @@ export default function App() {
     });
   }, [translationText]);
 
+  const openOptions = (hash: 'settings' | 'vocabulary') => {
+    void browser.tabs.create({ url: browser.runtime.getURL(`options.html#${hash}`) });
+  };
+
   const startSelection = async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
@@ -936,9 +940,19 @@ export default function App() {
 
   return (
     <main className="panel">
-      <header>
-        <h1>Translator Helper</h1>
-        <p className="subtitle">漫画 / 图片文字 · 本地识别 · 翻译到中文</p>
+      <header className="panel-header">
+        <div>
+          <h1>Translator Helper</h1>
+          <p className="subtitle">漫画 / 图片文字 · 本地识别 · 翻译到中文</p>
+        </div>
+        <div className="header-actions">
+          <button className="ghost" onClick={() => openOptions('vocabulary')} type="button">
+            生词本
+          </button>
+          <button className="ghost" onClick={() => openOptions('settings')} type="button">
+            设置
+          </button>
+        </div>
       </header>
 
       <button className="primary" onClick={startSelection}>
@@ -1046,17 +1060,6 @@ export default function App() {
         <div className="result-head">
           <h2>学习（词汇 / 语法）</h2>
           <div className="head-actions">
-            <button
-              className="ghost"
-              onClick={() =>
-                void browser.tabs.create({
-                  url: browser.runtime.getURL('options.html#vocabulary'),
-                })
-              }
-              type="button"
-            >
-              生词本
-            </button>
             {learningState?.status === 'done' && (
               <>
                 <button

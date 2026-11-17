@@ -51,6 +51,7 @@ export function startSelectionOverlay(): Promise<Rect | null> {
         padding: 2px 8px;
       }
       .cancel:hover { background: rgba(255, 255, 255, 0.15); }
+      .cancel:active { transform: scale(0.96); }
     `;
 
     const surface = document.createElement('div');

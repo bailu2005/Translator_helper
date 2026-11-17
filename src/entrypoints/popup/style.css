@@ -38,6 +38,20 @@ button {
   cursor: pointer;
   font: inherit;
   padding: 8px 12px;
+  transition:
+    transform 0.08s ease,
+    opacity 0.12s ease,
+    background-color 0.12s ease;
+}
+
+button:active:not(:disabled) {
+  opacity: 0.85;
+  transform: translateY(1px) scale(0.98);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .primary {

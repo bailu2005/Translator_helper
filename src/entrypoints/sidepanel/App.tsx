@@ -21,6 +21,7 @@ import { generateLearningCard } from '../../lib/learn/llm';
 import { tokenizeWithService, type TokenInfo } from '../../lib/learn/tokenize';
 import type { LearningCard } from '../../lib/learn/types';
 import { addVocabularyEntry, type VocabularyInput } from '../../lib/learn/vocabulary';
+import { showToast } from '../../lib/ui/toast';
 import { recognizeSelection } from '../../lib/ocr/engine';
 import type { OcrOrientation, ReadingOrder } from '../../lib/ocr/order';
 import { checkOcrService, type ServiceStatus } from '../../lib/ocr/service';
@@ -123,6 +124,13 @@ export default function App() {
   const canGenerateLearning = Boolean(
     activeId !== null && recognizedText && (llmConfigured ? translationText : true),
   );
+  const ocrBusy =
+    ocrState?.status === 'running' && ocrState.createdAt === activeSelection?.createdAt;
+  const translationBusy =
+    translationState?.status === 'running' &&
+    translationState.createdAt === activeSelection?.createdAt;
+  const learningBusy =
+    learningState?.status === 'running' && learningState.createdAt === activeSelection?.createdAt;
   const learningCacheKey = useMemo(() => {
     if (!settings || !recognizedText || !translationText) {
       return null;
@@ -245,6 +253,7 @@ export default function App() {
           error: error instanceof Error ? error.message : String(error),
         });
         setStatus('识别失败，可点击「重新识别」。');
+        showToast('识别失败', 'error');
       });
 
     return () => {
@@ -268,8 +277,8 @@ export default function App() {
       setTranslationState(null);
       return;
     }
-
     const shouldTranslate = settings.autoTranslate || manualTranslation?.createdAt === activeId;
+    const manual = manualTranslation?.createdAt === activeId;
     if (!shouldTranslate) {
       setTranslationState((previous) => (previous?.createdAt === activeId ? previous : null));
       return;
@@ -356,6 +365,9 @@ export default function App() {
           { createdAt: activeId, source: recognizedText, translation: result.text },
         ].slice(-5);
         setStatus('翻译完成。');
+        if (manual) {
+          showToast('翻译完成', 'success');
+        }
       } catch (error) {
         if (cancelled) {
           return;
@@ -366,6 +378,7 @@ export default function App() {
           error: error instanceof Error ? error.message : String(error),
         });
         setStatus('翻译失败，可点击「重新翻译」。');
+        showToast('翻译失败', 'error');
       }
     };
 
@@ -407,16 +420,19 @@ export default function App() {
 
     if (await tryStartSelection(tab.id)) {
       setStatus('已进入框选模式，请在页面中拖拽选择文字区域。');
+      showToast('已进入框选模式', 'info');
       return;
     }
 
     const injected = await injectContentScript(tab.id).catch(() => false);
     if (injected && (await tryStartSelection(tab.id))) {
       setStatus('已进入框选模式，请在页面中拖拽选择文字区域。');
+      showToast('已进入框选模式', 'info');
       return;
     }
 
     setStatus('无法在此页面框选：请刷新页面后重试；chrome://、扩展商店、PDF 等页面不支持。');
+    showToast('无法在此页面框选', 'error');
   };
 
   const removeItem = async (createdAt: number) => {
@@ -432,14 +448,19 @@ export default function App() {
     }
     await saveHistory(next);
     setStatus('已删除该条截取记录。');
+    showToast('已删除截取记录', 'success');
   };
 
   const clearAll = async () => {
+    if (!window.confirm('确定清空历史记录吗？')) {
+      return;
+    }
     await clearHistory();
     setHistory([]);
     setActiveCreatedAt(null);
     ocrCache.current.clear();
     setStatus('历史记录已清空。');
+    showToast('历史记录已清空', 'success');
   };
 
   const retryOcr = () => {
@@ -457,6 +478,15 @@ export default function App() {
     const status = await checkOcrService(serviceUrl);
     setServiceStatus(status);
     setServiceChecking(false);
+    if (!status.available) {
+      showToast('本地服务未连接', 'error');
+    } else if (status.loading) {
+      showToast('本地服务：模型加载中', 'info');
+    } else if (status.ready) {
+      showToast('本地服务可用', 'success');
+    } else {
+      showToast('本地服务未就绪', 'error');
+    }
   };
 
   const requestTranslation = async () => {
@@ -475,8 +505,10 @@ export default function App() {
     try {
       await navigator.clipboard.writeText(text);
       setStatus('已复制译文。');
+      showToast('已复制译文', 'success');
     } catch {
       setStatus('复制失败，请手动选择文本。');
+      showToast('复制失败', 'error');
     }
   };
 
@@ -522,6 +554,7 @@ export default function App() {
         });
         setLearningCollapsed(false);
         setStatus('本地分词完成。');
+        showToast('本地分词完成', 'success');
       } catch (error) {
         if (requestId !== learningRequestId.current) {
           return;
@@ -533,6 +566,7 @@ export default function App() {
           error: error instanceof Error ? error.message : String(error),
         });
         setStatus('本地分词失败。');
+        showToast('本地分词失败', 'error');
       }
       return;
     }
@@ -605,6 +639,7 @@ export default function App() {
       });
       setLearningCollapsed(false);
       setStatus('学习卡已生成。');
+      showToast('学习卡已生成', 'success');
     } catch (error) {
       if (requestId !== learningRequestId.current) {
         return;
@@ -616,6 +651,7 @@ export default function App() {
         error: error instanceof Error ? error.message : String(error),
       });
       setStatus('学习卡生成失败。');
+      showToast('学习卡生成失败', 'error');
     }
   };
 
@@ -645,8 +681,10 @@ export default function App() {
     try {
       await navigator.clipboard.writeText(text);
       setStatus('已复制识别文本。');
+      showToast('已复制识别文本', 'success');
     } catch {
       setStatus('复制失败，请手动选择文本。');
+      showToast('复制失败', 'error');
     }
   };
 
@@ -919,8 +957,8 @@ export default function App() {
               </button>
             )}
             {activeSelection && (
-              <button className="ghost" onClick={retryOcr} type="button">
-                重新识别
+              <button className="ghost" onClick={retryOcr} disabled={ocrBusy} type="button">
+                {ocrBusy ? '识别中…' : '重新识别'}
               </button>
             )}
           </div>
@@ -965,8 +1003,13 @@ export default function App() {
 
         <div className="service-status">
           <span>{serviceStatusLabel(serviceStatus, serviceChecking)}</span>
-          <button className="ghost" onClick={() => void refreshService()} type="button">
-            重试连接
+          <button
+            className="ghost"
+            onClick={() => void refreshService()}
+            disabled={serviceChecking}
+            type="button"
+          >
+            {serviceChecking ? '检测中…' : '重试连接'}
           </button>
         </div>
 
@@ -982,8 +1025,17 @@ export default function App() {
                 复制
               </button>
             )}
-            <button className="ghost" onClick={() => void requestTranslation()} type="button">
-              {translationState?.status === 'done' ? '重新翻译' : '翻译'}
+            <button
+              className="ghost"
+              onClick={() => void requestTranslation()}
+              disabled={!recognizedText || translationBusy}
+              type="button"
+            >
+              {translationBusy
+                ? '翻译中…'
+                : translationState?.status === 'done'
+                  ? '重新翻译'
+                  : '翻译'}
             </button>
           </div>
         </div>
@@ -996,7 +1048,11 @@ export default function App() {
           <div className="head-actions">
             <button
               className="ghost"
-              onClick={() => void browser.runtime.openOptionsPage()}
+              onClick={() =>
+                void browser.tabs.create({
+                  url: browser.runtime.getURL('options.html#vocabulary'),
+                })
+              }
               type="button"
             >
               生词本
@@ -1019,10 +1075,10 @@ export default function App() {
               <button
                 className="ghost"
                 onClick={() => void generateLearning()}
-                disabled={!canGenerateLearning || learningState?.status === 'running'}
+                disabled={!canGenerateLearning || learningBusy}
                 type="button"
               >
-                {llmConfigured ? '生成学习卡' : '本地分词'}
+                {learningBusy ? '处理中…' : llmConfigured ? '生成学习卡' : '本地分词'}
               </button>
             )}
           </div>

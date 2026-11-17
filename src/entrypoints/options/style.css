@@ -8,17 +8,76 @@
     sans-serif;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
 }
 
 .options {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  margin: 0 auto;
+  max-width: 720px;
+  overflow: hidden;
+  padding: 20px 16px;
+}
+
+.options-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tab-bar {
+  border-bottom: 1px solid rgba(127, 127, 127, 0.25);
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  font-size: 14px;
+  padding: 8px 10px;
+}
+
+.tab.active {
+  border-bottom-color: #2f6feb;
+  color: #2f6feb;
+}
+
+.tab-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.tab-panel {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  margin: 0 auto;
-  max-width: 720px;
-  padding: 32px 16px;
+}
+
+.vocab-toolbar {
+  background: Canvas;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 h1 {
@@ -169,7 +228,24 @@ button {
   cursor: pointer;
   font: inherit;
   padding: 8px 12px;
+  transition:
+    transform 0.08s ease,
+    opacity 0.12s ease,
+    background-color 0.12s ease;
   width: fit-content;
+}
+
+button:active:not(:disabled) {
+  opacity: 0.85;
+  transform: translateY(1px) scale(0.98);
+}
+
+.ghost {
+  background: transparent;
+  border: none;
+  color: #2f6feb;
+  font-size: 12px;
+  padding: 2px 4px;
 }
 
 .primary {

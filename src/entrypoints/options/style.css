@@ -26,6 +26,18 @@ h1 {
   margin: 0;
 }
 
+h2 {
+  font-size: 15px;
+  margin: 8px 0 0;
+  opacity: 0.8;
+}
+
+.service-message {
+  font-size: 13px;
+  margin: 0;
+  opacity: 0.8;
+}
+
 label {
   display: flex;
   flex-direction: column;

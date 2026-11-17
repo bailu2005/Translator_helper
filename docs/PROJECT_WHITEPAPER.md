@@ -58,6 +58,7 @@ Chrome/Edge 浏览器扩展：用户手动框选网页中的**日语图片 / 漫
 | D-11 | 仓库位置     | `D:\Translator_helper` 独立 git 仓库                   | 已定                 |
 | D-12 | 跨浏览器 API | `webextension-polyfill` 的 `browser.*` + 适配层        | 已定                 |
 | D-13 | 许可证       | MIT                                                    | 已定                 |
+| D-14 | OCR 引擎     | 本地 manga-ocr 服务优先，Tesseract.js 回退             | 已定                 |
 
 ---
 
@@ -159,9 +160,11 @@ popup（开关、语言、快捷入口）      options（Provider、Key、术语
 - 轻度去噪、纠偏（后续可选）。
 - 保留原图缩略图供侧边栏对照。
 
-### 5.4 一期 OCR：Tesseract.js + 竖排日语
+### 5.4 OCR：本地 manga-ocr 为主，Tesseract 回退
 
-- 运行位置：**侧边栏（受信任扩展页面）**内创建 Tesseract Worker，避免 content script 的页面 CSP/CORS 与 `storage.session` 权限限制。
+- 主引擎（P2.5）：本地 Python **manga-ocr** HTTP 服务（`ocr-service/`，默认 `http://127.0.0.1:8765`）。模型约 400MB，首次下载后缓存在本地；对竖排/横排、假名、多字体、图上文字、低质量图效果明显更好。
+- 回退：服务未启动、模型加载中或请求失败时，自动使用内置 Tesseract.js。
+- 运行位置：Tesseract 在**侧边栏（受信任扩展页面）**内创建 Worker，避免 content script 的页面 CSP/CORS 与 `storage.session` 权限限制。
 - 语言包与方向：竖排 `jpn_vert` + PSM 5；横排 `jpn` + PSM 6。侧边栏可选择方向与阅读顺序（右→左 / 左→右）。
 - 阅读顺序：请求 `blocks` 输出，按行 `bbox` 排序（竖排按列从右到左，横排按行从上到下）。
 - 预处理（P2.1）：最长边目标 1200、最高放大 2.5 倍，灰度 + 对比度增强 + 白边；深色背景自动反色。
@@ -300,6 +303,7 @@ docs/                  项目文档（含本白皮书）
 | `optional_host_permissions` | 预留：后续可改为按站点申请                                           |
 
 - 当前已申请 `host_permissions: ['<all_urls>']`：跨域漫画 CDN 图片会污染 canvas，需要后台 fetch 原图或截图兜底；内容脚本本身已覆盖全站。后续可评估改为可选权限。
+- `<all_urls>` 同时覆盖 `http://127.0.0.1:8765` 本地 OCR 服务；服务端已配置 CORS 与 Private Network Access，侧边栏可直接请求。
 
 ### 8.2 CSP
 
@@ -387,6 +391,7 @@ docs/                  项目文档（含本白皮书）
 - Tesseract.js `jpn_vert` 在侧边栏内的 Worker 运行。
 - 自动识别当前选区，显示进度、日文文本与置信度，支持重新识别 / 复制。
 - P2.1：方向（竖排/横排）+ 阅读顺序（右→左/左→右）选择、图像预处理、低置信度重试。
+- P2.5：本地 manga-ocr 服务（主引擎）+ Tesseract 自动回退；服务端位于 `ocr-service/`，模型本地缓存。
 
 **验收**：对固定漫画 fixture，识别结果达到约定准确率阈值。
 

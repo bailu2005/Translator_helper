@@ -9,7 +9,7 @@ export type OcrProgressListener = (progress: OcrProgress) => void;
 
 export interface OcrResult {
   text: string;
-  confidence: number;
+  confidence: number | null;
   engine: string;
   durationMs: number;
 }

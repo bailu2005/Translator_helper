@@ -109,6 +109,22 @@ button {
   padding: 2px 6px;
 }
 
+.ocr-hint {
+  font-size: 11px;
+  margin: 0 0 8px;
+  opacity: 0.55;
+}
+
+.service-status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  gap: 8px;
+  margin-bottom: 10px;
+  opacity: 0.7;
+}
+
 .placeholder {
   font-size: 13px;
   opacity: 0.5;
@@ -167,6 +183,20 @@ button {
   transition: width 0.2s ease;
 }
 
+.progress-bar.indeterminate {
+  animation: indeterminate 1.2s ease-in-out infinite;
+  width: 35%;
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
 .progress-label {
   font-size: 12px;
   opacity: 0.7;
@@ -185,6 +215,12 @@ button {
   font-size: 11px;
   margin: 8px 0 0;
   opacity: 0.55;
+}
+
+.ocr-note {
+  color: #b26a00;
+  font-size: 11px;
+  margin: 6px 0 0;
 }
 
 .ocr-error {

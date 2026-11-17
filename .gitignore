@@ -39,3 +39,9 @@ Thumbs.db
 # logs
 *.log
 npm-debug.log*
+
+# local OCR service
+ocr-service/.venv/
+ocr-service/__pycache__/
+ocr-service/.ruff_cache/
+ocr-service/models/

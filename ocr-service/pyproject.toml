@@ -1,0 +1,16 @@
+[project]
+name = "translator-helper-ocr"
+version = "0.1.0"
+description = "Local manga-ocr HTTP service for Translator Helper"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "pillow>=10.0",
+  "manga-ocr>=0.1.13",
+]
+
+[[tool.uv.index]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true

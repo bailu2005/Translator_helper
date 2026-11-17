@@ -1,10 +1,14 @@
 import type { OcrOrientation, ReadingOrder } from './ocr/order';
 
+export type OcrEngineSetting = 'auto' | 'tesseract';
+
 export interface Settings {
   sourceLang: string;
   targetLang: string;
   ocrOrientation: OcrOrientation;
   readingOrder: ReadingOrder;
+  ocrEngine: OcrEngineSetting;
+  ocrServiceUrl: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -12,6 +16,8 @@ export const DEFAULT_SETTINGS: Settings = {
   targetLang: 'zh-CN',
   ocrOrientation: 'vertical',
   readingOrder: 'rtl',
+  ocrEngine: 'auto',
+  ocrServiceUrl: 'http://127.0.0.1:8765',
 };
 
 export async function loadSettings(): Promise<Settings> {

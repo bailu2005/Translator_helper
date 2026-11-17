@@ -11,10 +11,17 @@ import {
   type SelectionPayload,
   type SelectionSource,
 } from '../../lib/messaging/protocol';
+import { recognizeSelection } from '../../lib/ocr/engine';
 import type { OcrOrientation, ReadingOrder } from '../../lib/ocr/order';
-import { tesseractOcrProvider } from '../../lib/ocr/tesseract';
+import { checkOcrService, type ServiceStatus } from '../../lib/ocr/service';
 import type { OcrResult } from '../../lib/ocr/types';
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type Settings } from '../../lib/settings';
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  saveSettings,
+  type OcrEngineSetting,
+  type Settings,
+} from '../../lib/settings';
 
 interface OcrState {
   createdAt: number;
@@ -23,6 +30,7 @@ interface OcrState {
   statusText?: string;
   result?: OcrResult;
   error?: string;
+  fallback?: boolean;
 }
 
 export default function App() {
@@ -33,6 +41,8 @@ export default function App() {
   const [ocrState, setOcrState] = useState<OcrState | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const [settingsReady, setSettingsReady] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
+  const [serviceChecking, setServiceChecking] = useState(false);
   const ocrCache = useRef(new Map<string, OcrResult>());
 
   const activeSelection = useMemo(
@@ -43,7 +53,12 @@ export default function App() {
   const activeDataUrl = activeSelection?.dataUrl ?? null;
   const orientation = settings?.ocrOrientation ?? 'vertical';
   const readingOrder = settings?.readingOrder ?? 'rtl';
-  const activeCacheKey = activeId === null ? null : `${activeId}:${orientation}:${readingOrder}`;
+  const engineSetting = settings?.ocrEngine ?? DEFAULT_SETTINGS.ocrEngine;
+  const serviceUrl = settings?.ocrServiceUrl ?? DEFAULT_SETTINGS.ocrServiceUrl;
+  const activeCacheKey =
+    activeId === null
+      ? null
+      : `${activeId}:${orientation}:${readingOrder}:${engineSetting}:${serviceUrl}`;
 
   useEffect(() => {
     void loadSettings().then((loaded) => {
@@ -72,6 +87,26 @@ export default function App() {
     if (!settingsReady) {
       return;
     }
+
+    let cancelled = false;
+    setServiceChecking(true);
+    void checkOcrService(serviceUrl).then((status) => {
+      if (cancelled) {
+        return;
+      }
+      setServiceStatus(status);
+      setServiceChecking(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsReady, serviceUrl]);
+
+  useEffect(() => {
+    if (!settingsReady || !settings) {
+      return;
+    }
     if (!activeId || !activeDataUrl || !activeCacheKey) {
       setOcrState(null);
       return;
@@ -86,24 +121,29 @@ export default function App() {
     let cancelled = false;
     setOcrState({ createdAt: activeId, status: 'running', progress: 0, statusText: '准备 OCR' });
 
-    void tesseractOcrProvider
-      .recognize(activeDataUrl, {
-        orientation,
-        readingOrder,
-        onProgress: ({ status: progressStatus, progress }) => {
-          if (cancelled) return;
-          setOcrState((previous) =>
-            previous && previous.createdAt === activeId
-              ? { ...previous, progress, statusText: progressStatus }
-              : previous,
-          );
-        },
-      })
-      .then((result) => {
+    void recognizeSelection(activeDataUrl, settings, {
+      orientation,
+      readingOrder,
+      onProgress: ({ status: progressStatus, progress }) => {
         if (cancelled) return;
-        ocrCache.current.set(activeCacheKey, result);
-        setOcrState({ createdAt: activeId, status: 'done', progress: 1, result });
-        setStatus('识别完成。');
+        setOcrState((previous) =>
+          previous && previous.createdAt === activeId
+            ? { ...previous, progress, statusText: progressStatus }
+            : previous,
+        );
+      },
+    })
+      .then((outcome) => {
+        if (cancelled) return;
+        ocrCache.current.set(activeCacheKey, outcome.result);
+        setOcrState({
+          createdAt: activeId,
+          status: 'done',
+          progress: 1,
+          result: outcome.result,
+          fallback: outcome.fallback,
+        });
+        setStatus(outcome.fallback ? '本地 manga-ocr 不可用，已回退 Tesseract。' : '识别完成。');
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -180,6 +220,13 @@ export default function App() {
     setRetryToken((value) => value + 1);
   };
 
+  const refreshService = async () => {
+    setServiceChecking(true);
+    const status = await checkOcrService(serviceUrl);
+    setServiceStatus(status);
+    setServiceChecking(false);
+  };
+
   const updateOcrSettings = (patch: Partial<Settings>) => {
     setSettings((previous) => {
       const next = { ...(previous ?? DEFAULT_SETTINGS), ...patch };
@@ -219,14 +266,21 @@ export default function App() {
       return <p className="placeholder">准备识别…</p>;
     }
     if (ocrState.status === 'running') {
-      const percent = Math.round(Math.min(1, Math.max(0, ocrState.progress)) * 100);
+      const indeterminate = ocrState.progress < 0;
+      const percent = indeterminate
+        ? 0
+        : Math.round(Math.min(1, Math.max(0, ocrState.progress)) * 100);
       return (
         <div className="ocr-progress">
           <div className="progress-track">
-            <div className="progress-bar" style={{ width: `${percent}%` }} />
+            <div
+              className={indeterminate ? 'progress-bar indeterminate' : 'progress-bar'}
+              style={indeterminate ? undefined : { width: `${percent}%` }}
+            />
           </div>
           <span className="progress-label">
-            {ocrProgressLabel(ocrState.statusText)} {percent}%
+            {ocrProgressLabel(ocrState.statusText)}
+            {indeterminate ? '…' : ` ${percent}%`}
           </span>
         </div>
       );
@@ -244,8 +298,14 @@ export default function App() {
       <div className="ocr-result">
         <pre className="ocr-text">{result.text || '（未识别到文字）'}</pre>
         <p className="ocr-meta">
-          置信度 {Math.round(result.confidence)}% · {result.engine} · {result.durationMs}ms
+          {typeof result.confidence === 'number'
+            ? `置信度 ${Math.round(result.confidence)}% · `
+            : ''}
+          {result.engine} · {result.durationMs}ms
         </p>
+        {ocrState.fallback && (
+          <p className="ocr-note">本地 manga-ocr 不可用，已使用内置 Tesseract。</p>
+        )}
       </div>
     );
   };
@@ -282,6 +342,18 @@ export default function App() {
 
         <div className="ocr-options">
           <label>
+            引擎
+            <select
+              value={engineSetting}
+              onChange={(event) =>
+                updateOcrSettings({ ocrEngine: event.target.value as OcrEngineSetting })
+              }
+            >
+              <option value="auto">本地 manga-ocr（失败回退）</option>
+              <option value="tesseract">内置 Tesseract</option>
+            </select>
+          </label>
+          <label>
             方向
             <select
               value={orientation}
@@ -301,6 +373,15 @@ export default function App() {
               <option value="ltr">左 → 右</option>
             </select>
           </label>
+        </div>
+
+        <p className="ocr-hint">方向/顺序仅在内置 Tesseract 生效；本地 manga-ocr 自动处理。</p>
+
+        <div className="service-status">
+          <span>{serviceStatusLabel(serviceStatus, serviceChecking)}</span>
+          <button className="ghost" onClick={() => void refreshService()} type="button">
+            重试连接
+          </button>
         </div>
 
         {renderOcr()}
@@ -411,6 +492,25 @@ async function injectContentScript(tabId: number): Promise<boolean> {
 
   await chrome.scripting.executeScript({ target: { tabId }, files });
   return true;
+}
+
+function serviceStatusLabel(status: ServiceStatus | null, checking: boolean): string {
+  if (checking) {
+    return '本地服务：检测中…';
+  }
+  if (!status) {
+    return '本地服务：未检测';
+  }
+  if (!status.available) {
+    return '本地服务：未启动（将回退 Tesseract）';
+  }
+  if (status.loading) {
+    return '本地服务：模型加载中（将回退 Tesseract）';
+  }
+  if (status.ready) {
+    return '本地服务：可用';
+  }
+  return '本地服务：未就绪（将回退 Tesseract）';
 }
 
 function ocrProgressLabel(status?: string): string {

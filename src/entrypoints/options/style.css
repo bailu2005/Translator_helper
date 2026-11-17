@@ -50,6 +50,43 @@ h2 {
   gap: 8px;
 }
 
+textarea {
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 8px;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 8px 10px;
+  resize: vertical;
+  width: 100%;
+}
+
+.glossary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.file-button {
+  align-items: center;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  flex-direction: row;
+  font-size: 13px;
+  gap: 6px;
+  padding: 8px 12px;
+}
+
+.file-button input {
+  display: none;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 label {
   display: flex;
   flex-direction: column;

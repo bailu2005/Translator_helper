@@ -29,7 +29,8 @@ import {
   setCachedTranslation,
 } from '../../lib/translate/cache';
 import { translateText } from '../../lib/translate/engine';
-import { targetLanguageLabel } from '../../lib/translate/types';
+import { loadGlossary, normalizeGlossary } from '../../lib/translate/glossary';
+import { targetLanguageLabel, type GlossaryEntry } from '../../lib/translate/types';
 
 interface OcrState {
   createdAt: number;
@@ -66,6 +67,7 @@ export default function App() {
     createdAt: number;
     token: number;
   } | null>(null);
+  const [glossary, setGlossary] = useState<GlossaryEntry[]>([]);
   const ocrCache = useRef(new Map<string, OcrResult>());
   const recentPairs = useRef<{ createdAt: number; source: string; translation?: string }[]>([]);
 
@@ -89,8 +91,8 @@ export default function App() {
     if (!settings || !recognizedText) {
       return null;
     }
-    return buildTranslationCacheKey(recognizedText, targetLang, settings);
-  }, [settings, recognizedText, targetLang]);
+    return buildTranslationCacheKey(recognizedText, targetLang, settings, glossary);
+  }, [settings, recognizedText, targetLang, glossary]);
 
   useEffect(() => {
     void loadSettings().then((loaded) => {
@@ -102,6 +104,8 @@ export default function App() {
       setHistory((previous) => mergeHistory(previous, items));
       setActiveCreatedAt((current) => current ?? items[0]?.createdAt ?? null);
     });
+
+    void loadGlossary().then(setGlossary);
 
     const listener = (message: unknown) => {
       if (isSelectionCropped(message)) {
@@ -115,8 +119,14 @@ export default function App() {
       changes: { [key: string]: { newValue?: unknown } },
       areaName: string,
     ) => {
-      if (areaName === 'local' && changes.settings?.newValue) {
+      if (areaName !== 'local') {
+        return;
+      }
+      if (changes.settings?.newValue) {
         setSettings(changes.settings.newValue as Settings);
+      }
+      if (changes.glossary?.newValue) {
+        setGlossary(normalizeGlossary(changes.glossary.newValue));
       }
     };
 
@@ -268,6 +278,7 @@ export default function App() {
             sourceLang: 'ja',
             targetLang,
             context,
+            glossary,
             onProgress: (statusText) => {
               if (cancelled) {
                 return;
@@ -322,6 +333,7 @@ export default function App() {
     recognizedText,
     translationCacheKey,
     targetLang,
+    glossary,
     settings,
     settingsReady,
     manualTranslation,

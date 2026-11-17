@@ -33,4 +33,14 @@ describe('buildTranslationCacheKey', () => {
     );
     expect(first).not.toBe(second);
   });
+
+  it('changes when the glossary changes', () => {
+    const first = buildTranslationCacheKey('ルフィ', 'zh-CN', settings(), [
+      { source: 'ルフィ', target: '路飞' },
+    ]);
+    const second = buildTranslationCacheKey('ルフィ', 'zh-CN', settings(), [
+      { source: 'ルフィ', target: '蒙奇·D·路飞' },
+    ]);
+    expect(first).not.toBe(second);
+  });
 });

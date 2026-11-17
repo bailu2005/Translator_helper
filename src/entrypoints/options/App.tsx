@@ -8,7 +8,14 @@ import {
   type Settings,
 } from '../../lib/settings';
 import { translateText } from '../../lib/translate/engine';
-import type { TranslationProviderSetting } from '../../lib/translate/types';
+import {
+  clearGlossary,
+  loadGlossary,
+  parseGlossary,
+  saveGlossary,
+  serializeGlossaryCsv,
+} from '../../lib/translate/glossary';
+import type { GlossaryEntry, TranslationProviderSetting } from '../../lib/translate/types';
 
 const TARGET_LANGS = [
   { value: 'zh-CN', label: '简体中文' },
@@ -20,9 +27,13 @@ export default function App() {
   const [saved, setSaved] = useState(false);
   const [serviceMessage, setServiceMessage] = useState('');
   const [translationTest, setTranslationTest] = useState('');
+  const [glossary, setGlossary] = useState<GlossaryEntry[]>([]);
+  const [glossaryText, setGlossaryText] = useState('');
+  const [glossaryMessage, setGlossaryMessage] = useState('');
 
   useEffect(() => {
     void loadSettings().then(setSettings);
+    void loadGlossary().then(setGlossary);
   }, []);
 
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) => {
@@ -65,6 +76,52 @@ export default function App() {
     } catch (error) {
       setTranslationTest(`失败：${error instanceof Error ? error.message : String(error)}`);
     }
+  };
+
+  const importGlossary = async () => {
+    const entries = parseGlossary(glossaryText);
+    if (entries.length === 0) {
+      setGlossaryMessage('没有解析到有效条目');
+      return;
+    }
+    await saveGlossary(entries);
+    setGlossary(entries);
+    setGlossaryMessage(`已导入 ${entries.length} 条`);
+  };
+
+  const handleGlossaryFile = async (file: File | undefined) => {
+    if (!file) {
+      return;
+    }
+    const text = await file.text();
+    setGlossaryText(text);
+    const entries = parseGlossary(text);
+    if (entries.length === 0) {
+      setGlossaryMessage('文件里没有解析到有效条目');
+      return;
+    }
+    await saveGlossary(entries);
+    setGlossary(entries);
+    setGlossaryMessage(`已从文件导入 ${entries.length} 条`);
+  };
+
+  const clearAllGlossary = async () => {
+    await clearGlossary();
+    setGlossary([]);
+    setGlossaryText('');
+    setGlossaryMessage('术语表已清空');
+  };
+
+  const exportGlossary = () => {
+    const blob = new Blob([serializeGlossaryCsv(glossary)], {
+      type: 'text/csv;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'glossary.csv';
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -145,6 +202,55 @@ export default function App() {
         />
         识别完成后自动翻译
       </label>
+
+      <h2>术语表</h2>
+
+      <p className="hint">
+        格式：CSV / TSV / JSON，每行 source,target，例如「ルフィ,路飞」。导入后会在翻译时强制使用。
+      </p>
+
+      <textarea
+        rows={6}
+        value={glossaryText}
+        placeholder={'ルフィ,路飞\nナミ,娜美'}
+        onChange={(event) => setGlossaryText(event.target.value)}
+      />
+
+      <div className="glossary-actions">
+        <button onClick={() => void importGlossary()} type="button">
+          导入文本
+        </button>
+        <label className="file-button">
+          选择文件
+          <input
+            type="file"
+            accept=".csv,.tsv,.txt,.json"
+            onChange={(event) => void handleGlossaryFile(event.target.files?.[0])}
+          />
+        </label>
+        <button onClick={exportGlossary} type="button" disabled={glossary.length === 0}>
+          导出 CSV
+        </button>
+        <button
+          onClick={() => void clearAllGlossary()}
+          type="button"
+          disabled={glossary.length === 0}
+        >
+          清空
+        </button>
+      </div>
+
+      {glossaryMessage && <p className="service-message">{glossaryMessage}</p>}
+
+      <p className="hint">
+        已导入 {glossary.length} 条
+        {glossary.length > 0
+          ? `，例如：${glossary
+              .slice(0, 3)
+              .map((entry) => `${entry.source}→${entry.target}`)
+              .join('；')}`
+          : ''}
+      </p>
 
       <h2>LLM（可选）</h2>
 

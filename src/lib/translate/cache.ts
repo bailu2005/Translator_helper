@@ -1,5 +1,7 @@
 import type { Settings } from '../settings';
-import type { TranslationResult } from './types';
+import { glossaryFingerprint } from './glossary';
+import { hashText } from './hash';
+import type { GlossaryEntry, TranslationResult } from './types';
 
 const CACHE_KEY = 'translationCache';
 const MAX_ENTRIES = 300;
@@ -11,14 +13,7 @@ interface CacheEntry {
   createdAt: number;
 }
 
-export function hashText(value: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(16);
-}
+export { hashText };
 
 function providerSignature(settings: Settings): string {
   if (settings.translationProvider === 'auto') {
@@ -31,8 +26,10 @@ export function buildTranslationCacheKey(
   text: string,
   targetLang: string,
   settings: Settings,
+  glossary: GlossaryEntry[] = [],
 ): string {
-  return `${CACHE_VERSION}:${hashText(`${text}|${targetLang}|${providerSignature(settings)}`)}`;
+  const signature = `${providerSignature(settings)}|${glossaryFingerprint(glossary)}`;
+  return `${CACHE_VERSION}:${hashText(`${text}|${targetLang}|${signature}`)}`;
 }
 
 export async function getCachedTranslation(key: string): Promise<TranslationResult | null> {

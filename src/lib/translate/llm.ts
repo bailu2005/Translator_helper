@@ -1,5 +1,7 @@
+import { selectGlossaryEntries } from './glossary';
 import {
   targetLanguageLabel,
+  type GlossaryEntry,
   type TranslationContext,
   type TranslationInput,
   type TranslationResult,
@@ -27,6 +29,17 @@ function formatContext(context?: TranslationContext[]): string {
       (item, index) =>
         `${index + 1}. ${item.source}${item.translation ? ` → ${item.translation}` : ''}`,
     )
+    .join('\n')}`;
+}
+
+function formatGlossary(text: string, glossary?: GlossaryEntry[]): string {
+  const entries = selectGlossaryEntries(text, glossary ?? []);
+  if (entries.length === 0) {
+    return '';
+  }
+
+  return `术语表（必须遵守）：\n${entries
+    .map((entry) => `${entry.source} → ${entry.target}`)
     .join('\n')}`;
 }
 
@@ -63,7 +76,13 @@ export async function translateWithLlm(
           },
           {
             role: 'user',
-            content: `${formatContext(input.context)}\n\n日文：\n${input.text}`.trim(),
+            content: [
+              formatContext(input.context),
+              formatGlossary(input.text, input.glossary),
+              `日文：\n${input.text}`,
+            ]
+              .filter(Boolean)
+              .join('\n\n'),
           },
         ],
       }),

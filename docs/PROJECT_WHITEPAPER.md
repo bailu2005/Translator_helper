@@ -274,6 +274,7 @@ interface LearningGrammar {
 - 免费机翻：源词替换成 `[[n]]` 占位 → 翻译 → 换回目标词，保证人名/专有名词不被乱译。
 - LLM：术语表直接写入 prompt。
 - 存储在 `storage.local`，可导出。
+- 已实现（P3.1）：CSV/TSV/JSON 导入、去重、表头跳过、导出 CSV；免费源占位替换；LLM prompt 注入。
 
 ### 6.4 外接大模型
 

@@ -17,7 +17,7 @@ body {
   flex-direction: column;
   gap: 16px;
   margin: 0 auto;
-  max-width: 420px;
+  max-width: 720px;
   padding: 32px 16px;
 }
 
@@ -85,6 +85,67 @@ textarea {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
+}
+
+.vocab-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vocab-item {
+  border: 1px solid rgba(127, 127, 127, 0.25);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.vocab-head {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vocab-head button {
+  margin-left: auto;
+}
+
+.vocab-surface {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.vocab-reading {
+  font-size: 12px;
+  opacity: 0.65;
+}
+
+.vocab-pos {
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.vocab-meaning {
+  font-size: 13px;
+  margin: 6px 0 0;
+}
+
+.vocab-detail {
+  font-size: 12px;
+  margin: 4px 0 0;
+  opacity: 0.75;
+}
+
+.vocab-source {
+  font-size: 12px;
+  margin: 4px 0 0;
+  opacity: 0.6;
+}
+
+.vocab-meta {
+  font-size: 10px;
+  margin: 6px 0 0;
+  opacity: 0.4;
 }
 
 label {

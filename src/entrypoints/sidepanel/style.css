@@ -85,7 +85,9 @@ button {
 
 .head-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+  justify-content: flex-end;
 }
 
 .ocr-options {
@@ -258,6 +260,12 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.learn-add {
+  font-size: 11px;
+  margin-left: auto;
+  padding: 2px 4px;
 }
 
 .learn-surface {

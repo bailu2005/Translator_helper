@@ -9,6 +9,15 @@ import {
 } from '../../lib/settings';
 import { translateText } from '../../lib/translate/engine';
 import {
+  clearVocabulary,
+  loadVocabulary,
+  normalizeVocabulary,
+  removeVocabularyEntry,
+  serializeVocabularyCsv,
+  serializeVocabularyJson,
+  type VocabularyEntry,
+} from '../../lib/learn/vocabulary';
+import {
   clearGlossary,
   loadGlossary,
   parseGlossary,
@@ -30,10 +39,28 @@ export default function App() {
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([]);
   const [glossaryText, setGlossaryText] = useState('');
   const [glossaryMessage, setGlossaryMessage] = useState('');
+  const [vocabulary, setVocabulary] = useState<VocabularyEntry[]>([]);
+  const [vocabQuery, setVocabQuery] = useState('');
+  const [vocabMessage, setVocabMessage] = useState('');
 
   useEffect(() => {
     void loadSettings().then(setSettings);
     void loadGlossary().then(setGlossary);
+    void loadVocabulary().then(setVocabulary);
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (
+      changes: { [key: string]: { newValue?: unknown } },
+      areaName: string,
+    ) => {
+      if (areaName === 'local' && changes.vocabulary) {
+        setVocabulary(normalizeVocabulary(changes.vocabulary.newValue));
+      }
+    };
+
+    browser.storage.onChanged.addListener(handleStorage);
+    return () => browser.storage.onChanged.removeListener(handleStorage);
   }, []);
 
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) => {
@@ -112,17 +139,55 @@ export default function App() {
     setGlossaryMessage('术语表已清空');
   };
 
-  const exportGlossary = () => {
-    const blob = new Blob([serializeGlossaryCsv(glossary)], {
-      type: 'text/csv;charset=utf-8',
-    });
+  const downloadFile = (content: string, type: string, filename: string) => {
+    const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'glossary.csv';
+    link.download = filename;
     link.click();
     URL.revokeObjectURL(url);
   };
+
+  const exportGlossary = () => {
+    downloadFile(serializeGlossaryCsv(glossary), 'text/csv;charset=utf-8', 'glossary.csv');
+  };
+
+  const deleteVocab = async (id: string) => {
+    const next = await removeVocabularyEntry(id);
+    setVocabulary(next);
+    setVocabMessage('已删除');
+  };
+
+  const clearVocab = async () => {
+    if (!window.confirm('确定清空生词本吗？')) {
+      return;
+    }
+    await clearVocabulary();
+    setVocabulary([]);
+    setVocabMessage('生词本已清空');
+  };
+
+  const exportVocabCsv = () => {
+    downloadFile(serializeVocabularyCsv(vocabulary), 'text/csv;charset=utf-8', 'vocabulary.csv');
+  };
+
+  const exportVocabJson = () => {
+    downloadFile(
+      serializeVocabularyJson(vocabulary),
+      'application/json;charset=utf-8',
+      'vocabulary.json',
+    );
+  };
+
+  const query = vocabQuery.trim().toLowerCase();
+  const filteredVocabulary = query
+    ? vocabulary.filter((entry) =>
+        [entry.surface, entry.reading, entry.meaning].some((value) =>
+          value.toLowerCase().includes(query),
+        ),
+      )
+    : vocabulary;
 
   return (
     <main className="options">
@@ -291,6 +356,53 @@ export default function App() {
       </button>
 
       {translationTest && <p className="service-message">{translationTest}</p>}
+
+      <h2>生词本（{vocabulary.length}）</h2>
+
+      <input
+        placeholder="搜索表记 / 读音 / 释义"
+        value={vocabQuery}
+        onChange={(event) => setVocabQuery(event.target.value)}
+      />
+
+      <div className="glossary-actions">
+        <button onClick={exportVocabCsv} type="button" disabled={vocabulary.length === 0}>
+          导出 CSV
+        </button>
+        <button onClick={exportVocabJson} type="button" disabled={vocabulary.length === 0}>
+          导出 JSON
+        </button>
+        <button onClick={() => void clearVocab()} type="button" disabled={vocabulary.length === 0}>
+          清空
+        </button>
+      </div>
+
+      {vocabMessage && <p className="service-message">{vocabMessage}</p>}
+
+      {filteredVocabulary.length === 0 ? (
+        <p className="hint">暂无生词。在侧边栏学习区点击「加入生词本」。</p>
+      ) : (
+        <div className="vocab-list">
+          {filteredVocabulary.map((entry) => (
+            <div className="vocab-item" key={entry.id}>
+              <div className="vocab-head">
+                <span className="vocab-surface">{entry.surface}</span>
+                {entry.reading && <span className="vocab-reading">{entry.reading}</span>}
+                {entry.pos && <span className="vocab-pos">{entry.pos}</span>}
+                <button className="ghost" onClick={() => void deleteVocab(entry.id)} type="button">
+                  删除
+                </button>
+              </div>
+              {entry.meaning && <p className="vocab-meaning">{entry.meaning}</p>}
+              {entry.usage && <p className="vocab-detail">用法：{entry.usage}</p>}
+              {entry.example && <p className="vocab-detail">例：{entry.example}</p>}
+              {entry.source && <p className="vocab-source">原文：{entry.source}</p>}
+              {entry.translation && <p className="vocab-source">译文：{entry.translation}</p>}
+              <p className="vocab-meta">{new Date(entry.createdAt).toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       <button className="primary" onClick={save}>
         保存

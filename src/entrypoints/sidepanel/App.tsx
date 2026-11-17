@@ -20,6 +20,7 @@ import {
 import { generateLearningCard } from '../../lib/learn/llm';
 import { tokenizeWithService, type TokenInfo } from '../../lib/learn/tokenize';
 import type { LearningCard } from '../../lib/learn/types';
+import { addVocabularyEntry, type VocabularyInput } from '../../lib/learn/vocabulary';
 import { recognizeSelection } from '../../lib/ocr/engine';
 import type { OcrOrientation, ReadingOrder } from '../../lib/ocr/order';
 import { checkOcrService, type ServiceStatus } from '../../lib/ocr/service';
@@ -479,6 +480,15 @@ export default function App() {
     }
   };
 
+  const addWordToNotebook = async (word: Omit<VocabularyInput, 'source' | 'translation'>) => {
+    await addVocabularyEntry({
+      ...word,
+      source: recognizedText,
+      translation: translationText,
+    });
+    setStatus(`已加入生词本：${word.surface}`);
+  };
+
   const generateLearning = async (force = false) => {
     if (!settings || activeId === null || !recognizedText) {
       return;
@@ -795,6 +805,22 @@ export default function App() {
                 <span className="learn-surface">{token.surface}</span>
                 {token.reading && <span className="learn-reading">{token.reading}</span>}
                 {token.pos && <span className="learn-pos">{token.pos}</span>}
+                <button
+                  className="ghost learn-add"
+                  onClick={() =>
+                    void addWordToNotebook({
+                      surface: token.surface,
+                      reading: token.reading,
+                      pos: token.pos,
+                      meaning: '',
+                      usage: '',
+                      example: '',
+                    })
+                  }
+                  type="button"
+                >
+                  加入生词本
+                </button>
               </div>
               {(token.lemma || token.form) && (
                 <p className="learn-detail">
@@ -833,6 +859,22 @@ export default function App() {
               <span className="learn-surface">{word.surface}</span>
               {word.reading && <span className="learn-reading">{word.reading}</span>}
               {word.pos && <span className="learn-pos">{word.pos}</span>}
+              <button
+                className="ghost learn-add"
+                onClick={() =>
+                  void addWordToNotebook({
+                    surface: word.surface,
+                    reading: word.reading,
+                    pos: word.pos,
+                    meaning: word.meaning,
+                    usage: word.usage,
+                    example: word.example,
+                  })
+                }
+                type="button"
+              >
+                加入生词本
+              </button>
             </div>
             {word.meaning && <p className="learn-meaning">{word.meaning}</p>}
             {word.usage && <p className="learn-detail">用法：{word.usage}</p>}
@@ -952,6 +994,13 @@ export default function App() {
         <div className="result-head">
           <h2>学习（词汇 / 语法）</h2>
           <div className="head-actions">
+            <button
+              className="ghost"
+              onClick={() => void browser.runtime.openOptionsPage()}
+              type="button"
+            >
+              生词本
+            </button>
             {learningState?.status === 'done' && (
               <>
                 <button

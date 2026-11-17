@@ -2,7 +2,9 @@
 
 日语漫画 / 图片文字实时翻译浏览器扩展（Chrome / Edge）。
 
-手动框选网页中的图片文字区域，OCR 识别后显示在侧边栏。图片不出本机，隐私优先。
+手动框选网页中的漫画文字区域，OCR 识别后显示在侧边栏。图片不出本机，隐私优先。
+
+**范围：只专注日文漫画 → 简体中文。** 其它语言/场景不纳入官方核心维护范围，欢迎通过 Provider 接口自行扩展。
 
 ## 状态
 
@@ -39,7 +41,8 @@ Chrome/Edge → `chrome://extensions` → 加载已解压的扩展程序 → 选
 
 ## 文档
 
-- [项目搭建白皮书](docs/PROJECT_WHITEPAPER.md)
+- [项目搭建白皮书](docs/PROJECT_WHITEPAPER.md) —— 设计、架构、决策
+- [工程日志](docs/ENGINEERING_LOG.md) —— 进度、问题、下一步
 - [本地 manga-ocr 服务](ocr-service/README.md)
 
 ## 技术栈

@@ -24,8 +24,11 @@ uv run app.py
 
 ## 接口
 
-- `GET /health` → `{ status, ready, loading, error, model }`
+- `GET /health` → `{ status, ready, loading, error, model, tokenizerReady, tokenizerError }`
 - `POST /ocr`，JSON `{ "image": "data:image/png;base64,..." }` → `{ text, engine, durationMs }`
+- `POST /tokenize`，JSON `{ "text": "こんにちは世界" }` → `{ tokens, engine, durationMs }`
+  - 每个 token：`{ surface, reading, lemma, pos, form }`
+  - 读音由片假名转平假名，词性/辞书形/活用形来自 unidic-lite
 
 默认地址：`http://127.0.0.1:8765`
 

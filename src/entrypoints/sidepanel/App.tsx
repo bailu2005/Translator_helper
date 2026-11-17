@@ -18,6 +18,7 @@ import {
   setCachedLearningCard,
 } from '../../lib/learn/cache';
 import { generateLearningCard } from '../../lib/learn/llm';
+import { tokenizeWithService, type TokenInfo } from '../../lib/learn/tokenize';
 import type { LearningCard } from '../../lib/learn/types';
 import { recognizeSelection } from '../../lib/ocr/engine';
 import type { OcrOrientation, ReadingOrder } from '../../lib/ocr/order';
@@ -63,8 +64,10 @@ interface TranslationState {
 interface LearningState {
   createdAt: number;
   status: 'running' | 'done' | 'error';
+  mode: 'llm' | 'basic';
   statusText?: string;
   card?: LearningCard;
+  tokens?: TokenInfo[];
   engine?: string;
   durationMs?: number;
   error?: string;
@@ -117,7 +120,7 @@ export default function App() {
   const translationText = translationState?.status === 'done' ? (translationState.text ?? '') : '';
   const llmConfigured = Boolean(settings?.llmBaseUrl && settings?.llmModel);
   const canGenerateLearning = Boolean(
-    llmConfigured && activeId !== null && recognizedText && translationText,
+    activeId !== null && recognizedText && (llmConfigured ? translationText : true),
   );
   const learningCacheKey = useMemo(() => {
     if (!settings || !recognizedText || !translationText) {
@@ -385,7 +388,17 @@ export default function App() {
     learningRequestId.current += 1;
     setLearningState(null);
     setLearningCollapsed(false);
-  }, [activeId, translationText, targetLang]);
+  }, [activeId, recognizedText, targetLang]);
+
+  useEffect(() => {
+    setLearningState((previous) => {
+      if (previous?.mode === 'llm') {
+        learningRequestId.current += 1;
+        return null;
+      }
+      return previous;
+    });
+  }, [translationText]);
 
   const startSelection = async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
@@ -467,30 +480,60 @@ export default function App() {
   };
 
   const generateLearning = async (force = false) => {
-    if (
-      !settings ||
-      activeId === null ||
-      !recognizedText ||
-      !translationText ||
-      !learningCacheKey
-    ) {
+    if (!settings || activeId === null || !recognizedText) {
       return;
     }
 
-    if (!llmConfigured) {
-      setLearningState({
-        createdAt: activeId,
-        status: 'error',
-        error: '请先在设置里配置 LLM（Base URL + 模型）',
-      });
-      return;
-    }
-
+    const mode: 'llm' | 'basic' = llmConfigured ? 'llm' : 'basic';
     const capturedId = activeId;
     const requestId = ++learningRequestId.current;
 
+    if (mode === 'basic') {
+      setLearningState({
+        createdAt: capturedId,
+        status: 'running',
+        mode,
+        statusText: '本地分词',
+      });
+
+      const started = performance.now();
+      try {
+        const result = await tokenizeWithService(settings.ocrServiceUrl, recognizedText);
+        if (requestId !== learningRequestId.current) {
+          return;
+        }
+        setLearningState({
+          createdAt: capturedId,
+          status: 'done',
+          mode,
+          tokens: result.tokens,
+          engine: '本地分词 (fugashi)',
+          durationMs: Math.round(performance.now() - started),
+        });
+        setLearningCollapsed(false);
+        setStatus('本地分词完成。');
+      } catch (error) {
+        if (requestId !== learningRequestId.current) {
+          return;
+        }
+        setLearningState({
+          createdAt: capturedId,
+          status: 'error',
+          mode,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        setStatus('本地分词失败。');
+      }
+      return;
+    }
+
+    if (!translationText || !learningCacheKey) {
+      return;
+    }
+    const cacheKey = learningCacheKey;
+
     if (!force) {
-      const cached = await getCachedLearningCard(learningCacheKey);
+      const cached = await getCachedLearningCard(cacheKey);
       if (requestId !== learningRequestId.current) {
         return;
       }
@@ -498,6 +541,7 @@ export default function App() {
         setLearningState({
           createdAt: capturedId,
           status: 'done',
+          mode,
           card: cached.card,
           engine: cached.engine,
           durationMs: cached.durationMs,
@@ -505,12 +549,13 @@ export default function App() {
         return;
       }
     } else {
-      await deleteCachedLearningCard(learningCacheKey);
+      await deleteCachedLearningCard(cacheKey);
     }
 
     setLearningState({
       createdAt: capturedId,
       status: 'running',
+      mode,
       statusText: '生成学习卡',
     });
 
@@ -539,10 +584,11 @@ export default function App() {
         return;
       }
 
-      await setCachedLearningCard(learningCacheKey, result);
+      await setCachedLearningCard(cacheKey, result);
       setLearningState({
         createdAt: capturedId,
         status: 'done',
+        mode,
         card: result.card,
         engine: result.engine,
         durationMs: result.durationMs,
@@ -556,6 +602,7 @@ export default function App() {
       setLearningState({
         createdAt: capturedId,
         status: 'error',
+        mode,
         error: error instanceof Error ? error.message : String(error),
       });
       setStatus('学习卡生成失败。');
@@ -698,14 +745,17 @@ export default function App() {
     if (ocrState?.status !== 'done' || !recognizedText) {
       return <p className="placeholder">等待日文识别完成。</p>;
     }
-    if (translationState?.status !== 'done' || !translationText) {
+    if (llmConfigured && (translationState?.status !== 'done' || !translationText)) {
       return <p className="placeholder">翻译完成后可生成学习卡。</p>;
     }
-    if (!llmConfigured) {
-      return <p className="ocr-note">配置 LLM（Base URL + 模型）后可生成词汇/语法讲解。</p>;
-    }
     if (!learningState || learningState.createdAt !== activeSelection.createdAt) {
-      return <p className="placeholder">点击「生成学习卡」查看词汇与语法讲解。</p>;
+      return (
+        <p className="placeholder">
+          {llmConfigured
+            ? '点击「生成学习卡」查看词汇与语法讲解。'
+            : '点击「本地分词」查看读音/词性/辞书形；配置 LLM 可获得释义和语法讲解。'}
+        </p>
+      );
     }
     if (learningState.status === 'running') {
       return (
@@ -713,12 +763,54 @@ export default function App() {
           <div className="progress-track">
             <div className="progress-bar indeterminate" />
           </div>
-          <span className="progress-label">{learningState.statusText ?? '生成中'}…</span>
+          <span className="progress-label">{learningState.statusText ?? '处理中'}…</span>
         </div>
       );
     }
     if (learningState.status === 'error') {
-      return <p className="ocr-error">学习卡生成失败：{learningState.error ?? '未知错误'}</p>;
+      return (
+        <p className="ocr-error">
+          {learningState.mode === 'basic' ? '本地分词失败' : '学习卡生成失败'}：
+          {learningState.error ?? '未知错误'}
+        </p>
+      );
+    }
+
+    if (learningState.mode === 'basic') {
+      const tokens = learningState.tokens ?? [];
+      if (learningCollapsed) {
+        return <p className="placeholder">已分词：{tokens.length} 个词（点击「展开」查看）</p>;
+      }
+      if (tokens.length === 0) {
+        return <p className="placeholder">未分词到内容。</p>;
+      }
+      return (
+        <div className="learn-list">
+          <p className="ocr-note">
+            本地分词只提供读音/词性/辞书形；配置 LLM 可获得中文释义、用法和语法讲解。
+          </p>
+          {tokens.map((token, index) => (
+            <div className="learn-word" key={`${token.surface}-${index}`}>
+              <div className="learn-word-head">
+                <span className="learn-surface">{token.surface}</span>
+                {token.reading && <span className="learn-reading">{token.reading}</span>}
+                {token.pos && <span className="learn-pos">{token.pos}</span>}
+              </div>
+              {(token.lemma || token.form) && (
+                <p className="learn-detail">
+                  {token.lemma && token.lemma !== token.surface ? `辞书形：${token.lemma}` : ''}
+                  {token.form
+                    ? `${token.lemma && token.lemma !== token.surface ? ' · ' : ''}活用：${token.form}`
+                    : ''}
+                </p>
+              )}
+            </div>
+          ))}
+          <p className="ocr-meta">
+            {learningState.engine} · {learningState.durationMs}ms
+          </p>
+        </div>
+      );
     }
 
     const card = learningState.card;
@@ -870,7 +962,7 @@ export default function App() {
                   {learningCollapsed ? '展开' : '收起'}
                 </button>
                 <button className="ghost" onClick={() => void generateLearning(true)} type="button">
-                  重新生成
+                  {learningState?.mode === 'basic' ? '重新分词' : '重新生成'}
                 </button>
               </>
             )}
@@ -881,7 +973,7 @@ export default function App() {
                 disabled={!canGenerateLearning || learningState?.status === 'running'}
                 type="button"
               >
-                生成学习卡
+                {llmConfigured ? '生成学习卡' : '本地分词'}
               </button>
             )}
           </div>

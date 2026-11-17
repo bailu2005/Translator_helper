@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 os.environ.setdefault('HF_ENDPOINT', 'https://hf-mirror.com')
 
+import jaconv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -17,9 +18,16 @@ model_error = None
 model_loading = True
 model_lock = threading.Lock()
 
+tagger = None
+tagger_error = None
+
 
 class OcrRequest(BaseModel):
     image: str
+
+
+class TokenizeRequest(BaseModel):
+    text: str
 
 
 def resolve_model_path() -> str:
@@ -50,9 +58,22 @@ def load_model():
         model_loading = False
 
 
+def load_tagger():
+    global tagger, tagger_error
+    try:
+        import fugashi
+
+        tagger = fugashi.Tagger()
+        print('Tokenizer is ready.', flush=True)
+    except Exception as exc:
+        tagger_error = str(exc)
+        print(f'Failed to load tokenizer: {exc}', flush=True)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     threading.Thread(target=load_model, daemon=True).start()
+    threading.Thread(target=load_tagger, daemon=True).start()
     yield
 
 
@@ -79,6 +100,8 @@ def health():
         'loading': model_loading,
         'error': model_error,
         'model': 'manga-ocr',
+        'tokenizerReady': tagger is not None,
+        'tokenizerError': tagger_error,
     }
 
 
@@ -98,6 +121,54 @@ def ocr(request: OcrRequest):
         'engine': 'manga-ocr',
         'durationMs': round((time.perf_counter() - started) * 1000),
     }
+
+
+@app.post('/tokenize')
+def tokenize(request: TokenizeRequest):
+    if tagger is None:
+        raise HTTPException(status_code=503, detail=tagger_error or 'tokenizer is loading')
+
+    started = time.perf_counter()
+    tokens = []
+
+    for word in tagger(request.text):
+        surface = word.surface
+        if not surface.strip():
+            continue
+
+        feature = word.feature
+        pos = normalize_feature(getattr(feature, 'pos1', ''))
+        if pos in ('補助記号', '記号', '空白'):
+            continue
+
+        reading = normalize_feature(getattr(feature, 'kana', '')) or normalize_feature(
+            getattr(feature, 'pron', '')
+        )
+        lemma = normalize_feature(getattr(feature, 'lemma', '')) or surface
+        form = normalize_feature(getattr(feature, 'cForm', ''))
+
+        tokens.append(
+            {
+                'surface': surface,
+                'reading': jaconv.kata2hira(reading) if reading else '',
+                'lemma': lemma,
+                'pos': pos,
+                'form': form,
+            }
+        )
+
+    return {
+        'tokens': tokens,
+        'engine': 'fugashi + unidic-lite',
+        'durationMs': round((time.perf_counter() - started) * 1000, 1),
+    }
+
+
+def normalize_feature(value) -> str:
+    if value is None:
+        return ''
+    text = str(value)
+    return '' if text == '*' else text
 
 
 def decode_image(value: str) -> Image.Image:

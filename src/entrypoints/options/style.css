@@ -38,6 +38,18 @@ h2 {
   opacity: 0.8;
 }
 
+.hint {
+  font-size: 12px;
+  margin: 0;
+  opacity: 0.6;
+}
+
+.checkbox-row {
+  align-items: center;
+  flex-direction: row;
+  gap: 8px;
+}
+
 label {
   display: flex;
   flex-direction: column;

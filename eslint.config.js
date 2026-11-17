@@ -4,7 +4,16 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['node_modules/**', '.output/**', '.wxt/**', 'dist/**', 'coverage/**', 'public/**'],
+    ignores: [
+      'node_modules/**',
+      '.output/**',
+      '.wxt/**',
+      'dist/**',
+      'coverage/**',
+      'public/**',
+      'ocr-service/.venv/**',
+      'ocr-service/models/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

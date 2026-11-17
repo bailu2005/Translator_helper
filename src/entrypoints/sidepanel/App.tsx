@@ -22,6 +22,14 @@ import {
   type OcrEngineSetting,
   type Settings,
 } from '../../lib/settings';
+import {
+  buildTranslationCacheKey,
+  deleteCachedTranslation,
+  getCachedTranslation,
+  setCachedTranslation,
+} from '../../lib/translate/cache';
+import { translateText } from '../../lib/translate/engine';
+import { targetLanguageLabel } from '../../lib/translate/types';
 
 interface OcrState {
   createdAt: number;
@@ -31,6 +39,16 @@ interface OcrState {
   result?: OcrResult;
   error?: string;
   fallback?: boolean;
+}
+
+interface TranslationState {
+  createdAt: number;
+  status: 'running' | 'done' | 'error';
+  statusText?: string;
+  text?: string;
+  engine?: string;
+  durationMs?: number;
+  error?: string;
 }
 
 export default function App() {
@@ -43,7 +61,13 @@ export default function App() {
   const [settingsReady, setSettingsReady] = useState(false);
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
   const [serviceChecking, setServiceChecking] = useState(false);
+  const [translationState, setTranslationState] = useState<TranslationState | null>(null);
+  const [manualTranslation, setManualTranslation] = useState<{
+    createdAt: number;
+    token: number;
+  } | null>(null);
   const ocrCache = useRef(new Map<string, OcrResult>());
+  const recentPairs = useRef<{ createdAt: number; source: string; translation?: string }[]>([]);
 
   const activeSelection = useMemo(
     () => history.find((item) => item.createdAt === activeCreatedAt) ?? null,
@@ -59,6 +83,14 @@ export default function App() {
     activeId === null
       ? null
       : `${activeId}:${orientation}:${readingOrder}:${engineSetting}:${serviceUrl}`;
+  const targetLang = settings?.targetLang ?? DEFAULT_SETTINGS.targetLang;
+  const recognizedText = ocrState?.status === 'done' ? (ocrState.result?.text ?? '') : '';
+  const translationCacheKey = useMemo(() => {
+    if (!settings || !recognizedText) {
+      return null;
+    }
+    return buildTranslationCacheKey(recognizedText, targetLang, settings);
+  }, [settings, recognizedText, targetLang]);
 
   useEffect(() => {
     void loadSettings().then((loaded) => {
@@ -79,8 +111,21 @@ export default function App() {
       }
     };
 
+    const handleStorageChange = (
+      changes: { [key: string]: { newValue?: unknown } },
+      areaName: string,
+    ) => {
+      if (areaName === 'local' && changes.settings?.newValue) {
+        setSettings(changes.settings.newValue as Settings);
+      }
+    };
+
     browser.runtime.onMessage.addListener(listener);
-    return () => browser.runtime.onMessage.removeListener(listener);
+    browser.storage.onChanged.addListener(handleStorageChange);
+    return () => {
+      browser.runtime.onMessage.removeListener(listener);
+      browser.storage.onChanged.removeListener(handleStorageChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -169,6 +214,119 @@ export default function App() {
     readingOrder,
   ]);
 
+  useEffect(() => {
+    if (!settingsReady || !settings) {
+      return;
+    }
+    if (!activeId || !recognizedText || !translationCacheKey) {
+      setTranslationState(null);
+      return;
+    }
+
+    const shouldTranslate = settings.autoTranslate || manualTranslation?.createdAt === activeId;
+    if (!shouldTranslate) {
+      setTranslationState((previous) => (previous?.createdAt === activeId ? previous : null));
+      return;
+    }
+
+    let cancelled = false;
+    setTranslationState({
+      createdAt: activeId,
+      status: 'running',
+      statusText: '准备翻译',
+    });
+
+    const run = async () => {
+      const cached = await getCachedTranslation(translationCacheKey);
+      if (cancelled) {
+        return;
+      }
+      if (cached) {
+        setTranslationState({
+          createdAt: activeId,
+          status: 'done',
+          text: cached.text,
+          engine: cached.engine,
+          durationMs: cached.durationMs,
+        });
+        recentPairs.current = [
+          ...recentPairs.current.filter((pair) => pair.createdAt !== activeId),
+          { createdAt: activeId, source: recognizedText, translation: cached.text },
+        ].slice(-5);
+        return;
+      }
+
+      const context = recentPairs.current
+        .filter((pair) => pair.createdAt !== activeId)
+        .slice(-3)
+        .map((pair) => ({ source: pair.source, translation: pair.translation }));
+
+      try {
+        const result = await translateText(
+          {
+            text: recognizedText,
+            sourceLang: 'ja',
+            targetLang,
+            context,
+            onProgress: (statusText) => {
+              if (cancelled) {
+                return;
+              }
+              setTranslationState((previous) =>
+                previous && previous.createdAt === activeId
+                  ? { ...previous, statusText }
+                  : previous,
+              );
+            },
+          },
+          settings,
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        await setCachedTranslation(translationCacheKey, result);
+        setTranslationState({
+          createdAt: activeId,
+          status: 'done',
+          text: result.text,
+          engine: result.engine,
+          durationMs: result.durationMs,
+        });
+        recentPairs.current = [
+          ...recentPairs.current.filter((pair) => pair.createdAt !== activeId),
+          { createdAt: activeId, source: recognizedText, translation: result.text },
+        ].slice(-5);
+        setStatus('翻译完成。');
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        setTranslationState({
+          createdAt: activeId,
+          status: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        });
+        setStatus('翻译失败，可点击「重新翻译」。');
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeId,
+    recognizedText,
+    translationCacheKey,
+    targetLang,
+    settings,
+    settingsReady,
+    manualTranslation,
+  ]);
+
   const startSelection = async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
@@ -225,6 +383,27 @@ export default function App() {
     const status = await checkOcrService(serviceUrl);
     setServiceStatus(status);
     setServiceChecking(false);
+  };
+
+  const requestTranslation = async () => {
+    if (activeId === null || !translationCacheKey) {
+      return;
+    }
+    await deleteCachedTranslation(translationCacheKey);
+    setManualTranslation({ createdAt: activeId, token: Date.now() });
+  };
+
+  const copyTranslation = async () => {
+    const text = translationState?.text;
+    if (!text) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      setStatus('已复制译文。');
+    } catch {
+      setStatus('复制失败，请手动选择文本。');
+    }
   };
 
   const updateOcrSettings = (patch: Partial<Settings>) => {
@@ -310,6 +489,47 @@ export default function App() {
     );
   };
 
+  const renderTranslation = () => {
+    if (!activeSelection) {
+      return <p className="placeholder">先框选一个区域。</p>;
+    }
+    if (ocrState?.status !== 'done' || !ocrState.result?.text) {
+      return <p className="placeholder">等待日文识别完成。</p>;
+    }
+    if (
+      !settings?.autoTranslate &&
+      manualTranslation?.createdAt !== activeSelection.createdAt &&
+      translationState?.status !== 'done'
+    ) {
+      return <p className="placeholder">自动翻译已关闭，点击「翻译」开始。</p>;
+    }
+    if (!translationState || translationState.createdAt !== activeSelection.createdAt) {
+      return <p className="placeholder">准备翻译…</p>;
+    }
+    if (translationState.status === 'running') {
+      return (
+        <div className="ocr-progress">
+          <div className="progress-track">
+            <div className="progress-bar indeterminate" />
+          </div>
+          <span className="progress-label">{translationState.statusText ?? '翻译中'}…</span>
+        </div>
+      );
+    }
+    if (translationState.status === 'error') {
+      return <p className="ocr-error">翻译失败：{translationState.error ?? '未知错误'}</p>;
+    }
+
+    return (
+      <div className="translation-result">
+        <p className="translation-text">{translationState.text || '（空）'}</p>
+        <p className="ocr-meta">
+          {translationState.engine} · {translationState.durationMs}ms
+        </p>
+      </div>
+    );
+  };
+
   return (
     <main className="panel">
       <header>
@@ -385,6 +605,23 @@ export default function App() {
         </div>
 
         {renderOcr()}
+      </section>
+
+      <section className="translation">
+        <div className="result-head">
+          <h2>译文（{targetLanguageLabel(targetLang)}）</h2>
+          <div className="head-actions">
+            {translationState?.status === 'done' && translationState.text && (
+              <button className="ghost" onClick={() => void copyTranslation()} type="button">
+                复制
+              </button>
+            )}
+            <button className="ghost" onClick={() => void requestTranslation()} type="button">
+              {translationState?.status === 'done' ? '重新翻译' : '翻译'}
+            </button>
+          </div>
+        </div>
+        {renderTranslation()}
       </section>
 
       <section className="result">

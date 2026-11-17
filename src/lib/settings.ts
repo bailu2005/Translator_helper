@@ -1,4 +1,5 @@
 import type { OcrOrientation, ReadingOrder } from './ocr/order';
+import type { TranslationProviderSetting } from './translate/types';
 
 export type OcrEngineSetting = 'auto' | 'tesseract';
 
@@ -9,6 +10,11 @@ export interface Settings {
   readingOrder: ReadingOrder;
   ocrEngine: OcrEngineSetting;
   ocrServiceUrl: string;
+  translationProvider: TranslationProviderSetting;
+  autoTranslate: boolean;
+  llmBaseUrl: string;
+  llmModel: string;
+  llmApiKey: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -18,6 +24,11 @@ export const DEFAULT_SETTINGS: Settings = {
   readingOrder: 'rtl',
   ocrEngine: 'auto',
   ocrServiceUrl: 'http://127.0.0.1:8765',
+  translationProvider: 'auto',
+  autoTranslate: true,
+  llmBaseUrl: 'https://api.openai.com/v1',
+  llmModel: '',
+  llmApiKey: '',
 };
 
 export async function loadSettings(): Promise<Settings> {

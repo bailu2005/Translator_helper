@@ -62,6 +62,7 @@ button {
 
 .result,
 .ocr,
+.translation,
 .history {
   border: 1px solid rgba(127, 127, 127, 0.25);
   border-radius: 8px;
@@ -221,6 +222,20 @@ button {
   color: #b26a00;
   font-size: 11px;
   margin: 6px 0 0;
+}
+
+.translation-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.translation-text {
+  font-size: 15px;
+  line-height: 1.8;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .ocr-error {

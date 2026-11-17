@@ -13,7 +13,8 @@
 - P2 日文 OCR（Tesseract 回退）✅
 - P2.1 方向 / 顺序 / 预处理 / 低置信度重试 ✅
 - P2.5 本地 manga-ocr 服务（主引擎，失败回退 Tesseract）✅
-- P3 翻译 + 学习模式（词汇/语法/生词本）：计划已确认，待实现
+- P3.0 翻译主流程（LLM → Chrome 内置 → MyMemory）✅
+- P3.1 术语表、P3.2 LLM 学习卡：待实现
 
 ## OCR 架构
 

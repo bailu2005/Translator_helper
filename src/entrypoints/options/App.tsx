@@ -7,17 +7,19 @@ import {
   type OcrEngineSetting,
   type Settings,
 } from '../../lib/settings';
+import { translateText } from '../../lib/translate/engine';
+import type { TranslationProviderSetting } from '../../lib/translate/types';
 
 const TARGET_LANGS = [
   { value: 'zh-CN', label: '简体中文' },
   { value: 'zh-TW', label: '繁體中文' },
-  { value: 'en', label: 'English' },
 ];
 
 export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
   const [serviceMessage, setServiceMessage] = useState('');
+  const [translationTest, setTranslationTest] = useState('');
 
   useEffect(() => {
     void loadSettings().then(setSettings);
@@ -50,6 +52,19 @@ export default function App() {
       return;
     }
     setServiceMessage(`已连接，但未就绪：${status.error ?? '未知状态'}`);
+  };
+
+  const testTranslation = async () => {
+    setTranslationTest('测试中…');
+    try {
+      const result = await translateText(
+        { text: 'こんにちは', sourceLang: 'ja', targetLang: settings.targetLang },
+        settings,
+      );
+      setTranslationTest(`${result.engine}：${result.text}`);
+    } catch (error) {
+      setTranslationTest(`失败：${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   return (
@@ -104,6 +119,72 @@ export default function App() {
       </button>
 
       {serviceMessage && <p className="service-message">{serviceMessage}</p>}
+
+      <h2>翻译</h2>
+
+      <label>
+        翻译引擎
+        <select
+          value={settings.translationProvider}
+          onChange={(event) =>
+            update('translationProvider', event.target.value as TranslationProviderSetting)
+          }
+        >
+          <option value="auto">自动（LLM → Chrome 内置 → MyMemory）</option>
+          <option value="chrome">Chrome 内置翻译</option>
+          <option value="mymemory">MyMemory</option>
+          <option value="llm">LLM</option>
+        </select>
+      </label>
+
+      <label className="checkbox-row">
+        <input
+          type="checkbox"
+          checked={settings.autoTranslate}
+          onChange={(event) => update('autoTranslate', event.target.checked)}
+        />
+        识别完成后自动翻译
+      </label>
+
+      <h2>LLM（可选）</h2>
+
+      <label>
+        Base URL
+        <input
+          value={settings.llmBaseUrl}
+          placeholder="https://api.openai.com/v1"
+          onChange={(event) => update('llmBaseUrl', event.target.value)}
+        />
+      </label>
+
+      <label>
+        模型
+        <input
+          value={settings.llmModel}
+          placeholder="gpt-4o-mini / qwen2.5:7b"
+          onChange={(event) => update('llmModel', event.target.value)}
+        />
+      </label>
+
+      <label>
+        API Key
+        <input
+          type="password"
+          value={settings.llmApiKey}
+          onChange={(event) => update('llmApiKey', event.target.value)}
+        />
+      </label>
+
+      <p className="hint">
+        Key 仅存储在浏览器本地（未加密）。Ollama 可用 http://localhost:11434/v1，并设置
+        OLLAMA_ORIGINS 允许扩展来源。
+      </p>
+
+      <button onClick={() => void testTranslation()} type="button">
+        测试翻译
+      </button>
+
+      {translationTest && <p className="service-message">{translationTest}</p>}
 
       <button className="primary" onClick={save}>
         保存

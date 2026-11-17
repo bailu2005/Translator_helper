@@ -47,23 +47,25 @@ Chrome/Edge 浏览器扩展：用户手动框选网页中的**日语漫画文字
 
 ## 2. 关键决策记录（ADR）
 
-| ID   | 主题         | 决策                                                   | 状态                 |
-| ---- | ------------ | ------------------------------------------------------ | -------------------- |
-| D-01 | 目标平台     | Chrome/Edge，Manifest V3；架构预留 Firefox             | 已定                 |
-| D-02 | 构建框架     | WXT + TypeScript（一套代码生成多浏览器 manifest）      | 已定                 |
-| D-03 | UI 框架      | React                                                  | 已定                 |
-| D-04 | 包管理器     | npm（本机 PowerShell 限制，使用 `npm.cmd`）            | 已定                 |
-| D-05 | 展示位置     | Chrome 原生 `chrome.sidePanel` 侧边栏                  | 已定                 |
-| D-06 | 一期 OCR     | Tesseract.js + `jpn_vert`（竖排日语，侧边栏内 Worker） | 已定                 |
-| D-07 | 二期 OCR     | manga-ocr 导出 ONNX + WebGPU/ONNX Runtime Web          | 已定（后续）         |
-| D-08 | 选区方式     | 手动框选，不做自动气泡检测                             | 已定                 |
-| D-09 | 翻译源       | 默认免费源；可选术语表/离线词典/LLM                    | 已定（具体源待确认） |
-| D-10 | 图片处理     | 本地裁剪 + 本地 OCR，不上传                            | 已定                 |
-| D-11 | 仓库位置     | `D:\Translator_helper` 独立 git 仓库                   | 已定                 |
-| D-12 | 跨浏览器 API | `webextension-polyfill` 的 `browser.*` + 适配层        | 已定                 |
-| D-13 | 许可证       | MIT                                                    | 已定                 |
-| D-14 | OCR 引擎     | 本地 manga-ocr 服务优先，Tesseract.js 回退             | 已定                 |
-| D-15 | 项目范围     | 只做日文漫画；其它语言/场景通过 Provider 自行扩展      | 已定                 |
+| ID   | 主题         | 决策                                                           | 状态         |
+| ---- | ------------ | -------------------------------------------------------------- | ------------ |
+| D-01 | 目标平台     | Chrome/Edge，Manifest V3；架构预留 Firefox                     | 已定         |
+| D-02 | 构建框架     | WXT + TypeScript（一套代码生成多浏览器 manifest）              | 已定         |
+| D-03 | UI 框架      | React                                                          | 已定         |
+| D-04 | 包管理器     | npm（本机 PowerShell 限制，使用 `npm.cmd`）                    | 已定         |
+| D-05 | 展示位置     | Chrome 原生 `chrome.sidePanel` 侧边栏                          | 已定         |
+| D-06 | 一期 OCR     | Tesseract.js + `jpn_vert`（竖排日语，侧边栏内 Worker）         | 已定         |
+| D-07 | 二期 OCR     | manga-ocr 导出 ONNX + WebGPU/ONNX Runtime Web                  | 已定（后续） |
+| D-08 | 选区方式     | 手动框选，不做自动气泡检测                                     | 已定         |
+| D-09 | 翻译源       | 自动源链：LLM(已配置) → Chrome 内置 → MyMemory；含术语表       | 已定         |
+| D-10 | 图片处理     | 本地裁剪 + 本地 OCR，不上传                                    | 已定         |
+| D-11 | 仓库位置     | `D:\Translator_helper` 独立 git 仓库                           | 已定         |
+| D-12 | 跨浏览器 API | `webextension-polyfill` 的 `browser.*` + 适配层                | 已定         |
+| D-13 | 许可证       | MIT                                                            | 已定         |
+| D-14 | OCR 引擎     | 本地 manga-ocr 服务优先，Tesseract.js 回退                     | 已定         |
+| D-15 | 项目范围     | 只做日文漫画；其它语言/场景通过 Provider 自行扩展              | 已定         |
+| D-16 | 学习模式     | 按需生成；词汇+语法；LLM 合并调用；无 LLM 用本地分词；含生词本 | 已定         |
+| D-17 | 翻译执行位置 | 侧边栏（文档上下文 + 流式），不走 background                   | 已定         |
 
 ---
 
@@ -199,7 +201,7 @@ popup（开关、语言、快捷入口）      options（Provider、Key、术语
 
 ---
 
-## 6. 翻译层设计
+## 6. 翻译层与学习模式设计（P3）
 
 ### 6.1 统一接口
 
@@ -212,43 +214,117 @@ interface TranslationProvider {
 
 interface TranslateInput {
   text: string;
-  sourceLang?: string; // 默认 auto / ja
+  sourceLang: 'ja';
   targetLang: string; // 默认 zh-CN
-  context?: string; // 相邻气泡上下文
+  context?: { source: string; translation?: string }[];
   glossary?: GlossaryEntry[];
+  withLearning?: boolean;
+}
+
+interface TranslateResult {
+  text: string;
+  engine: string;
+  durationMs: number;
+  learning?: LearningCard;
+}
+
+interface LearningCard {
+  words: LearningWord[];
+  grammar: LearningGrammar[];
+}
+
+interface LearningWord {
+  surface: string;
+  reading: string;
+  pos: string;
+  meaning: string;
+  usage: string;
+  example: string;
+}
+
+interface LearningGrammar {
+  pattern: string;
+  meaning: string;
+  nuance: string;
+  example: string;
 }
 ```
 
-### 6.2 免费翻译源（待最终选定）
+### 6.2 默认翻译源链
 
-| 方案                       | 优点               | 缺点                                  |
-| -------------------------- | ------------------ | ------------------------------------- |
-| Chrome 内置 Translator API | 本地、免费、隐私好 | 版本/扩展环境可用性需实测，语言对有限 |
-| LibreTranslate             | 开源，可自建，免费 | 公共实例限流、质量一般                |
-| MyMemory                   | 免费配额，接入简单 | 配额小、质量一般                      |
-| 有道/百度/腾讯翻译开放平台 | 质量较好           | 需注册 Key，有额度限制                |
-| Google 翻译非官方接口      | 质量好             | 违反 ToS、不稳定，**不采用**          |
+`auto` 模式按顺序尝试：
 
-> 一期建议：以「Chrome 内置 API（可用时）+ 免费公共接口兜底」实现 `free` Provider，并在 UI 中说明质量限制。漫画对话对上下文敏感，正式质量建议用户配置 LLM。
+1. **LLM**（已配置时）：质量最好，可带上下文/术语表，并同时返回学习卡
+2. **Chrome 内置 Translator API**：免费、本地、隐私好（需实测扩展环境与 ja→zh 语言包）
+3. **MyMemory**：免费公共接口兜底
+
+全部失败 → 错误提示 + 重试。也可在设置中固定某个源。
+
+| 方案                        | 定位       | 备注                            |
+| --------------------------- | ---------- | ------------------------------- |
+| Chrome 内置 Translator API  | 免费默认   | 本地、隐私好；版本/语言包需实测 |
+| MyMemory                    | 免费兜底   | 配额小、质量一般                |
+| LibreTranslate              | 可选自定义 | 可自建；公共实例多有限流        |
+| LLM（OpenAI 兼容 / Ollama） | 质量优先   | 需配置 Key；可带上下文与学习卡  |
+| Google 翻译非官方接口       | 不采用     | 违反 ToS、不稳定                |
 
 ### 6.3 用户词典 / 术语表
 
-- 支持导入 CSV / JSON / TMX。
-- 用途：专有名词、人名、拟声词的强制译法，翻译前替换、翻译后校正。
-- 可选离线词典（如 ECDICT）做词级查询（后续）。
-- 存储在 `chrome.storage.local`，可导出。
+- 导入 CSV / JSON：`source,target`。
+- 免费机翻：源词替换成 `[[n]]` 占位 → 翻译 → 换回目标词，保证人名/专有名词不被乱译。
+- LLM：术语表直接写入 prompt。
+- 存储在 `storage.local`，可导出。
 
 ### 6.4 外接大模型
 
-- 协议：OpenAI 兼容（自定义 `baseURL` / `model` / `apiKey`）。
-- 能力：传入前后气泡作为上下文、携带术语表、支持流式输出。
-- Key 仅存本地 `chrome.storage`，绝不入库。
+- OpenAI 兼容：自定义 `baseURL` / `model` / `apiKey`。
+- 本地 Ollama 预设：`http://localhost:11434/v1`。
+- 设置页提供「测试连接」。
+- Key 仅存本地 `storage.local`（非加密）。
+- 上下文：最近 2–3 个气泡的原文/译文。
+- 支持流式输出（P3.2）。
+- **一次调用同时返回译文 + 学习卡**（JSON）。
 
-### 6.5 缓存与限流
+### 6.5 学习模式（P3.2 / P3.3）
 
-- 文本哈希作为 key 的 LRU + 持久缓存（`chrome.storage.local` / IndexedDB）。
-- 相同文本不重复请求。
-- 请求去抖、并发上限、失败重试与退避。
+目标：翻译的同时学习词汇和句式。
+
+- **按需生成**：默认不自动生成，点击「生成学习卡」才调用。
+- **两层能力**：
+  1. LLM：词汇（表记/读音/词性/中文释义/用法/例句）+ 语法（句式/含义/语感/例句），与译文一次返回。
+  2. 无 LLM：本地 `/tokenize`（fugashi + unidic-lite）返回表记/读音/词性/辞书形/活用形，作为基础学习信息。
+- **词汇 + 语法都要**。
+- **生词本**：本地收藏、去重、导出；后续可加复习。
+- 读音以本地分词为准，LLM 负责释义/用法/例句，减少幻觉。
+- 默认展示 3–5 个重点词 + 1–3 个语法点。
+- 学习卡按原文 hash 缓存。
+
+### 6.6 执行位置与数据流
+
+- 翻译与学习在**侧边栏**执行：
+  - Chrome 内置翻译 API 需要文档上下文
+  - LLM 流式输出更直接
+  - 扩展已有 `host_permissions: ['<all_urls>']`，可直接请求第三方 API
+- 本地分词由 `ocr-service` 的 `/tokenize` 提供
+- 不经过 background，避免消息序列化与流式复杂度
+- 缓存/设置/术语表/生词本统一 `storage.local`
+
+### 6.7 缓存与限流
+
+- 翻译缓存：`hash(原文 + targetLang + provider + glossaryVersion)`，LRU。
+- 学习卡缓存：同样以原文 hash 存储。
+- 相同文本不重复请求；免费源限流时优先命中缓存。
+- 请求超时、重试、退避。
+
+### 6.8 UI
+
+- OCR 区域下方：「译文（中文）」+ 引擎/耗时。
+- 学习区域可折叠：
+  - 词汇卡片、语法卡片
+  - 「生成学习卡」「加入生词本」「复制」
+- 自动翻译开关（默认开）。
+- 目标语言默认 `zh-CN`，可选 `zh-TW`。
+- 失败提示 + 重试。
 
 ---
 
@@ -400,12 +476,16 @@ docs/                  项目文档（含本白皮书）
 
 **验收**：对固定漫画 fixture，识别结果达到约定准确率阈值。
 
-### P3 翻译与侧边栏
+### P3 翻译与学习
 
-- `free` Provider 接入 + 缓存。
-- 侧边栏展示原图/日文/中文/置信度，支持复制、重译、历史。
+- **P3.0**：`TranslationProvider` 接口 + 自动源链（LLM → Chrome 内置 → MyMemory）+ 侧边栏译文 + 缓存 + 自动翻译。
+- **P3.1**：术语表导入与占位替换。
+- **P3.2**：LLM（OpenAI 兼容 / Ollama）+ 上下文 + 流式 + 一次返回译文 + 学习卡。
+- **P3.3**：本地 `/tokenize`（fugashi + unidic-lite）+ 无 LLM 时的基础学习信息。
+- **P3.4**：学习卡 UI + 生词本（增删、去重、导出）。
+- **P3.5**：历史关联、错误体验、i18n。
 
-**验收**：框选一个气泡，端到端 3s 内出译文。
+**验收**：框选气泡 → 译文出现；点击「生成学习卡」得到词汇/语法；无 LLM 时仍显示读音/词性/辞书形；生词本可增删导出。
 
 ### P4 增强
 

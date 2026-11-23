@@ -5,7 +5,7 @@
 > 新开窗口继续项目时，先读 [新会话接续指南](HANDOFF.md)。
 
 - 最后更新：2026-11-23
-- 当前阶段：P3.5 完成（P3 全部完成），下一步 P4
+- 当前阶段：P4.1 完成（Firefox 适配），下一步 P4.2 自动气泡检测
 
 ---
 
@@ -34,7 +34,7 @@
 | P2.1 | 方向 / 阅读顺序选择、图像预处理、低置信度重试               | ✅                   |
 | P2.5 | 本地 manga-ocr 服务（主引擎）+ Tesseract 自动回退           | ✅                   |
 | P3   | 日 → 中翻译 + 学习模式（词汇/语法/生词本/历史/i18n）        | ✅（P3.0–P3.5 完成） |
-| P4   | 自动气泡检测、GPU 加速、浏览器内 ONNX、Firefox、商店发布    | 远期                 |
+| P4   | 自动气泡检测、GPU 加速、浏览器内 ONNX、Firefox、商店发布    | 进行中（P4.1 完成）  |
 
 ---
 
@@ -98,8 +98,8 @@ uv run app.py               # 启动服务，默认 127.0.0.1:8765
 
 ### 验证
 
-- 扩展单测：`npm.cmd run test`（当前 28 个通过）
-- 类型 / lint / 构建：`npm.cmd run compile`、`npm.cmd run lint`、`npm.cmd run build`
+- 扩展单测：`npm.cmd run test`（当前 85 个通过）
+- 类型 / lint / 构建：`npm.cmd run compile`、`npm.cmd run lint`、`npm.cmd run build`、`npm.cmd run build:firefox`
 - 服务健康检查：`GET http://127.0.0.1:8765/health`
 
 ---
@@ -114,6 +114,8 @@ uv run app.py               # 启动服务，默认 127.0.0.1:8765
 - **手写体较弱**：manga-ocr 官方说明主要针对印刷/漫画字体
 - **Tesseract 回退质量有限**：方向/顺序设置只对 Tesseract 生效
 - **历史图片仅当前会话**：原始截图存 `storage.session`，浏览器重启后图片不保留；译文/学习卡元数据存 `storage.local`（`historyMeta`），重启后仍保留但需重新 OCR 才能关联
+- **Firefox 未真机回归**：P4.1 已完成构建与 API 适配，仍需在 Firefox 手动验证侧栏打开、框选、跨域截图与 Tesseract Worker
+- **Firefox 翻译源**：无 Chrome 内置翻译，`auto` 会走 LLM（若配置）或 MyMemory
 - **权限较宽**：当前 `host_permissions: ['<all_urls>']`，后续可评估改为可选权限
 - **跨域图片**：优先后台拉原图，失败走视口截图；部分防盗链/DRM 场景仍可能失败
 - **模型下载源**：当前环境直连 HuggingFace 超时，默认使用 `hf-mirror.com`
@@ -151,11 +153,17 @@ uv run app.py               # 启动服务，默认 127.0.0.1:8765
 - **P3.4**：✅ 学习卡 UI + 生词本（去重、搜索、删除、导出 CSV/JSON）
 - **P3.5**：✅ 历史关联译文/学习卡、错误分类与内联重试、i18n（zh-CN / zh-TW / en）
 
-### 7.4 之后
+### 7.4 P4 计划
 
-1. 性能：GPU / DirectML 推理；考虑浏览器内 ONNX/WebGPU
-2. 体验：自动气泡检测、快捷键、错误重试
-3. 发布：打包 zip、商店审核、Firefox 适配
+- **P4.1**：✅ Firefox 适配
+  - 构建 `firefox-mv2`，`side_panel` 自动映射为 `sidebar_action`
+  - `browser_specific_settings.gecko`：扩展 ID、`data_collection_permissions`
+  - 平台适配层：`src/lib/platform/sidepanel.ts`（Chrome `sidePanel` / Firefox `sidebarAction`）、`src/lib/platform/inject.ts`（`chrome.scripting` / `tabs.executeScript`）
+  - Firefox 权限收敛为 `storage / activeTab / contextMenus`（+ `<all_urls>`）
+- **P4.2**：自动气泡检测（本地候选区域 + 多气泡批量 OCR/翻译）
+- **P4.3**：GPU / DirectML（ocr-service 设备自动检测与 `/health` 上报；本机 MX330 2GB 需实测）
+- **P4.4**：浏览器内 ONNX / WebGPU（模型导出、体积、性能验证）
+- **P4.5**：发布（隐私说明、商店素材、版本与 CI 发布）
 
 ---
 
@@ -214,3 +222,4 @@ uv run app.py               # 启动服务，默认 127.0.0.1:8765
 | 2026-11-17 | P3.4 生词本 + 生词本独立标签页 + 全局按钮反馈（Toast/按压/加载态）         | 本次提交              |
 | 2026-11-17 | P3.4 生词本（去重、搜索、删除、导出 CSV/JSON）                             | 本次提交              |
 | 2026-11-23 | P3.5 历史关联译文/学习卡 + 错误分类/内联重试 + i18n（简中/繁中/英文）      | 本次提交              |
+| 2026-11-23 | P4.1 Firefox 适配（sidebar_action、平台 API 抽象、manifest）               | 本次提交              |

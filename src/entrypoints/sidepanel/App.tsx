@@ -32,6 +32,7 @@ import { generateLearningCard } from '../../lib/learn/llm';
 import { tokenizeWithService, type TokenInfo } from '../../lib/learn/tokenize';
 import type { LearningCard } from '../../lib/learn/types';
 import { addVocabularyEntry, type VocabularyInput } from '../../lib/learn/vocabulary';
+import { injectContentScripts } from '../../lib/platform/inject';
 import { showToast } from '../../lib/ui/toast';
 import { recognizeSelection } from '../../lib/ocr/engine';
 import type { OcrOrientation, ReadingOrder } from '../../lib/ocr/order';
@@ -516,7 +517,7 @@ export default function App() {
       return;
     }
 
-    const injected = await injectContentScript(tab.id).catch(() => false);
+    const injected = await injectContentScripts(tab.id, contentScriptFiles());
     if (injected && (await tryStartSelection(tab.id))) {
       setStatus(tr('statusSelectionMode'));
       showToast(tr('selectionModeTitle'), 'info');
@@ -1404,15 +1405,9 @@ async function tryStartSelection(tabId: number): Promise<boolean> {
   }
 }
 
-async function injectContentScript(tabId: number): Promise<boolean> {
+function contentScriptFiles(): string[] {
   const manifest = browser.runtime.getManifest();
-  const files = (manifest.content_scripts ?? []).flatMap((entry) => entry.js ?? []);
-  if (files.length === 0) {
-    return false;
-  }
-
-  await chrome.scripting.executeScript({ target: { tabId }, files });
-  return true;
+  return (manifest.content_scripts ?? []).flatMap((entry) => entry.js ?? []);
 }
 
 function serviceStatusLabel(

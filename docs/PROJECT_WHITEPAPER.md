@@ -1,8 +1,8 @@
 # 日语漫画实时翻译浏览器扩展 · 项目搭建白皮书
 
-- 版本：v0.3
+- 版本：v0.4
 - 日期：2026-11-23
-- 状态：开发中（P0–P3.5 已完成，下一步 P4）
+- 状态：开发中（P0–P3.5、P4.1 已完成）
 - 项目路径：`D:\Translator_helper`
 - 本文档是项目的唯一事实来源（Single Source of Truth），后续按本文档分阶段搭建。
 
@@ -413,9 +413,11 @@ docs/                  项目文档（含本白皮书）
 ### 8.3 跨浏览器预留
 
 - 统一使用 `webextension-polyfill` 的 `browser.*`。
-- 侧边栏封装：Chrome `sidePanel` / Firefox `sidebar_action`。
-- manifest 差异由 WXT 按目标浏览器生成。
+- 侧边栏封装：Chrome `sidePanel` / Firefox `sidebar_action`；已实现 `src/lib/platform/sidepanel.ts`。
+- 脚本注入封装：Chrome `scripting.executeScript` / Firefox `tabs.executeScript`；已实现 `src/lib/platform/inject.ts`。
+- manifest 差异由 WXT 按目标浏览器生成（P4.1）：Firefox 移除 `sidePanel`/`scripting` 权限，加入 `browser_specific_settings.gecko`（ID、`data_collection_permissions`）。
 - 业务代码不直接依赖 `chrome.*`，差异集中在 `lib/platform/`。
+- Firefox 使用 MV2 构建，`side_panel` 由 WXT 映射为 `sidebar_action`；翻译源不含 Chrome 内置 API。
 
 ---
 
@@ -503,9 +505,11 @@ docs/                  项目文档（含本白皮书）
 
 ### P4 增强
 
-- 术语表导入、LLM Provider（流式）、快捷键、右键菜单、i18n。
-- manga-ocr ONNX/WebGPU 作为高质量 OCR 选项。
-- Firefox 构建验证。
+- **P4.1**：✅ Firefox 适配（MV2 + `sidebar_action`、平台 API 抽象、扩展 ID/数据声明）。
+- **P4.2**：自动气泡检测 + 多气泡批量 OCR/翻译。
+- **P4.3**：GPU / DirectML 推理（设备自动检测与 `/health` 上报）。
+- **P4.4**：manga-ocr ONNX/WebGPU 作为浏览器内高质量 OCR 选项。
+- **P4.5**：发布（隐私说明、商店素材、zip/CI 发布）。
 
 ---
 
@@ -546,3 +550,4 @@ docs/                  项目文档（含本白皮书）
 | v0.1 | 2026-11-07 | 初始白皮书：确立图片优先、本地 OCR、日语漫画、侧边栏、Git 规划                                 |
 | v0.2 | 2026-11-17 | 范围收敛为日文漫画；P0–P2.5 完成；OCR 改为本地 manga-ocr 主引擎 + Tesseract 回退；新增工程日志 |
 | v0.3 | 2026-11-23 | P3.0–P3.5 完成：翻译/学习/生词本/历史关联/错误体验/i18n                                        |
+| v0.4 | 2026-11-23 | P4.1 完成：Firefox 适配、平台 API 抽象、Firefox manifest                                       |

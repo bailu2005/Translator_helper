@@ -224,6 +224,7 @@ const zhCN = {
   popupDescription: '框选网页中的漫画 / 图片文字，本地识别后翻译。',
   popupOpenPanel: '打开侧边栏',
   popupSettings: '设置',
+  popupOpenFailed: '无法打开侧边栏，请检查浏览器支持或改用扩展菜单。',
 
   overlayHint: '拖拽框选 · Esc / 右键取消',
   overlayCancel: '取消',
@@ -483,6 +484,7 @@ const zhTW: Record<MessageKey, string> = {
   popupDescription: '框選網頁中的漫畫 / 圖片文字，本地辨識後翻譯。',
   popupOpenPanel: '開啟側邊欄',
   popupSettings: '設定',
+  popupOpenFailed: '無法開啟側邊欄，請檢查瀏覽器支援或改用擴充功能選單。',
 
   overlayHint: '拖曳框選 · Esc / 右鍵取消',
   overlayCancel: '取消',
@@ -743,6 +745,8 @@ const en: Record<MessageKey, string> = {
   popupDescription: 'Select manga / image text on a page, recognize locally and translate.',
   popupOpenPanel: 'Open side panel',
   popupSettings: 'Settings',
+  popupOpenFailed:
+    'Could not open the side panel. Check browser support or use the extension menu.',
 
   overlayHint: 'Drag to select · Esc / right-click to cancel',
   overlayCancel: 'Cancel',

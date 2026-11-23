@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { createTranslator, type UiLang } from '../../lib/i18n';
+import { openSidePanel } from '../../lib/platform/sidepanel';
 import { DEFAULT_SETTINGS, loadSettings } from '../../lib/settings';
 
 export default function App() {
   const [lang, setLang] = useState<UiLang>(DEFAULT_SETTINGS.uiLang);
+  const [error, setError] = useState('');
   const tr = createTranslator(lang);
 
   useEffect(() => {
@@ -14,12 +16,12 @@ export default function App() {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tab?.id) return;
 
-    try {
-      await chrome.sidePanel.open({ tabId: tab.id });
+    const opened = await openSidePanel(tab.id);
+    if (opened) {
       window.close();
-    } catch {
-      // ignore when side panel is unavailable
+      return;
     }
+    setError(tr('popupOpenFailed'));
   };
 
   return (
@@ -32,6 +34,7 @@ export default function App() {
       <button onClick={() => browser.runtime.openOptionsPage()} type="button">
         {tr('popupSettings')}
       </button>
+      {error && <p className="popup-error">{error}</p>}
     </main>
   );
 }

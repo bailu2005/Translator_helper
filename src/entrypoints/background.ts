@@ -1,12 +1,9 @@
 import { appendHistory } from '../lib/history';
 import { isCaptureVisible, isFetchImage, isSelectionCropped } from '../lib/messaging/protocol';
+import { configureSidePanel, openSidePanel } from '../lib/platform/sidepanel';
 
 export default defineBackground(() => {
-  try {
-    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
-  } catch {
-    // sidePanel is Chrome/Edge only
-  }
+  configureSidePanel();
 
   browser.runtime.onInstalled.addListener(() => {
     browser.contextMenus.create({
@@ -41,11 +38,7 @@ export default defineBackground(() => {
 
 async function startSelection(tabId: number): Promise<void> {
   await browser.tabs.sendMessage(tabId, { type: 'START_SELECTION' }).catch(() => {});
-  try {
-    await chrome.sidePanel.open({ tabId });
-  } catch {
-    // ignore when side panel is unavailable
-  }
+  await openSidePanel(tabId);
 }
 
 async function fetchImage(url: string): Promise<{ dataUrl: string | null }> {
@@ -87,7 +80,7 @@ async function captureVisible(windowId?: number): Promise<{ dataUrl: string | nu
   }
 
   try {
-    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: 'png' });
+    const dataUrl = await browser.tabs.captureVisibleTab(windowId, { format: 'png' });
     return { dataUrl };
   } catch {
     return { dataUrl: null };

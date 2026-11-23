@@ -19,6 +19,7 @@
 - P3.3 本地分词基础学习（读音/词性/辞书形）✅
 - P3.4 生词本（去重、搜索、删除、导出 CSV/JSON）✅
 - P3.5 历史关联译文/学习卡、错误体验、i18n（简中/繁中/英文）✅
+- P4.1 Firefox 适配（sidebar_action、注入回退、manifest）✅
 
 ## OCR 架构
 
@@ -43,6 +44,14 @@ uv run app.py
 ```
 
 Chrome/Edge → `chrome://extensions` → 加载已解压的扩展程序 → 选择 `.output/chrome-mv3`。
+
+Firefox：
+
+```powershell
+npm.cmd run build:firefox
+```
+
+Firefox → `about:debugging#/runtime/this-firefox` → 临时载入附加组件 → 选择 `.output/firefox-mv2/manifest.json`。Firefox 使用 `sidebar_action` 打开侧栏，脚本注入会自动回退到 `tabs.executeScript`。
 
 ## 文档
 

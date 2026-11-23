@@ -3,6 +3,9 @@ import { defineConfig, type UserManifest } from 'wxt';
 export default defineConfig({
   srcDir: 'src',
   modules: ['@wxt-dev/module-react'],
+  zip: {
+    zipSources: false,
+  },
   manifest: (env): UserManifest => {
     const isFirefox = env.browser === 'firefox';
     const manifest: UserManifest = {

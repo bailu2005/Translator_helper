@@ -5,7 +5,7 @@
 > 新开窗口继续项目时，先读 [新会话接续指南](HANDOFF.md)。
 
 - 最后更新：2026-11-23
-- 当前阶段：P4.1 完成（Firefox 适配），下一步 P4.2 自动气泡检测
+- 当前阶段：P4.5 完成（0.2.0 可打包发布）；P4.2/P4.3/P4.4 暂缓
 
 ---
 
@@ -26,15 +26,15 @@
 
 ## 2. 当前里程碑
 
-| 阶段 | 内容                                                        | 状态                 |
-| ---- | ----------------------------------------------------------- | -------------------- |
-| P0   | WXT + TypeScript + React 骨架；侧边栏 / popup / options；CI | ✅                   |
-| P1   | 框选遮罩、目标定位、坐标映射、跨域取像素、预览、历史与删除  | ✅                   |
-| P2   | Tesseract.js `jpn_vert` OCR                                 | ✅                   |
-| P2.1 | 方向 / 阅读顺序选择、图像预处理、低置信度重试               | ✅                   |
-| P2.5 | 本地 manga-ocr 服务（主引擎）+ Tesseract 自动回退           | ✅                   |
-| P3   | 日 → 中翻译 + 学习模式（词汇/语法/生词本/历史/i18n）        | ✅（P3.0–P3.5 完成） |
-| P4   | 自动气泡检测、GPU 加速、浏览器内 ONNX、Firefox、商店发布    | 进行中（P4.1 完成）  |
+| 阶段 | 内容                                                        | 状态                     |
+| ---- | ----------------------------------------------------------- | ------------------------ |
+| P0   | WXT + TypeScript + React 骨架；侧边栏 / popup / options；CI | ✅                       |
+| P1   | 框选遮罩、目标定位、坐标映射、跨域取像素、预览、历史与删除  | ✅                       |
+| P2   | Tesseract.js `jpn_vert` OCR                                 | ✅                       |
+| P2.1 | 方向 / 阅读顺序选择、图像预处理、低置信度重试               | ✅                       |
+| P2.5 | 本地 manga-ocr 服务（主引擎）+ Tesseract 自动回退           | ✅                       |
+| P3   | 日 → 中翻译 + 学习模式（词汇/语法/生词本/历史/i18n）        | ✅（P3.0–P3.5 完成）     |
+| P4   | Firefox、发布、自动气泡检测、GPU、浏览器内 ONNX             | 进行中（P4.1/P4.5 完成） |
 
 ---
 
@@ -114,6 +114,8 @@ uv run app.py               # 启动服务，默认 127.0.0.1:8765
 - **手写体较弱**：manga-ocr 官方说明主要针对印刷/漫画字体
 - **Tesseract 回退质量有限**：方向/顺序设置只对 Tesseract 生效
 - **历史图片仅当前会话**：原始截图存 `storage.session`，浏览器重启后图片不保留；译文/学习卡元数据存 `storage.local`（`historyMeta`），重启后仍保留但需重新 OCR 才能关联
+- **暂未上架商店**：P4.5 只提供本地 zip 与 GitHub Release；上架需补商店素材、隐私政策 URL（GitHub Pages）与人工审核
+- **GitHub Pages 需手动启用**：仓库 Settings → Pages → Source 选择 `main` 分支 `/docs`，隐私页地址为 `https://bailu2005.github.io/Translator_helper/PRIVACY.html`
 - **Firefox 未真机回归**：P4.1 已完成构建与 API 适配，仍需在 Firefox 手动验证侧栏打开、框选、跨域截图与 Tesseract Worker
 - **Firefox 翻译源**：无 Chrome 内置翻译，`auto` 会走 LLM（若配置）或 MyMemory
 - **权限较宽**：当前 `host_permissions: ['<all_urls>']`，后续可评估改为可选权限
@@ -160,10 +162,17 @@ uv run app.py               # 启动服务，默认 127.0.0.1:8765
   - `browser_specific_settings.gecko`：扩展 ID、`data_collection_permissions`
   - 平台适配层：`src/lib/platform/sidepanel.ts`（Chrome `sidePanel` / Firefox `sidebarAction`）、`src/lib/platform/inject.ts`（`chrome.scripting` / `tabs.executeScript`）
   - Firefox 权限收敛为 `storage / activeTab / contextMenus`（+ `<all_urls>`）
-- **P4.2**：自动气泡检测（本地候选区域 + 多气泡批量 OCR/翻译）
-- **P4.3**：GPU / DirectML（ocr-service 设备自动检测与 `/health` 上报；本机 MX330 2GB 需实测）
-- **P4.4**：浏览器内 ONNX / WebGPU（模型导出、体积、性能验证）
-- **P4.5**：发布（隐私说明、商店素材、版本与 CI 发布）
+- **P4.2**：暂缓——自动气泡检测（本地候选区域 + 多气泡批量 OCR/翻译）
+- **P4.3**：暂缓——GPU / DirectML（ocr-service 设备自动检测与 `/health` 上报；本机 MX330 2GB 需实测）
+- **P4.4**：暂缓——浏览器内 ONNX / WebGPU（模型导出、体积、性能验证）
+- **P4.5**：✅ 发布准备
+  - 版本升至 `0.2.0`
+  - 隐私政策 `docs/PRIVACY.md` + `docs/index.md` / `_config.yml`（可走 GitHub Pages `/docs`）
+  - 本地 zip：`npm run zip` / `zip:firefox`；默认关闭 sources zip（未来 AMO 再开启）
+  - `.github/workflows/release.yml`：`v*` tag 自动构建并创建 GitHub Release，附加 Chrome/Firefox zip
+  - 本轮只做本地 zip / CI，暂不上架商店；P4.2/P4.3/P4.4 不影响现有功能，后续可按需补做
+
+> 影响说明：跳过 P4.2–P4.4 后，产品保持「手动框选 + 可选本地 OCR 服务」的 MVP 形态；密集页需逐格框选，未启动本地服务时回退 Tesseract，高质量 OCR 需运行 Python 服务。发布文案不应承诺自动检测、GPU 或免服务高质量 OCR。
 
 ---
 
@@ -223,3 +232,4 @@ uv run app.py               # 启动服务，默认 127.0.0.1:8765
 | 2026-11-17 | P3.4 生词本（去重、搜索、删除、导出 CSV/JSON）                             | 本次提交              |
 | 2026-11-23 | P3.5 历史关联译文/学习卡 + 错误分类/内联重试 + i18n（简中/繁中/英文）      | 本次提交              |
 | 2026-11-23 | P4.1 Firefox 适配（sidebar_action、平台 API 抽象、manifest）               | 本次提交              |
+| 2026-11-23 | P4.5 发布准备（0.2.0、隐私政策、zip、Release CI；暂不上架）                | 本次提交              |

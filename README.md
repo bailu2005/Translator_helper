@@ -20,6 +20,7 @@
 - P3.4 生词本（去重、搜索、删除、导出 CSV/JSON）✅
 - P3.5 历史关联译文/学习卡、错误体验、i18n（简中/繁中/英文）✅
 - P4.1 Firefox 适配（sidebar_action、注入回退、manifest）✅
+- P4.5 发布准备（0.2.0、隐私政策、zip、Release CI）✅
 
 ## OCR 架构
 
@@ -53,11 +54,28 @@ npm.cmd run build:firefox
 
 Firefox → `about:debugging#/runtime/this-firefox` → 临时载入附加组件 → 选择 `.output/firefox-mv2/manifest.json`。Firefox 使用 `sidebar_action` 打开侧栏，脚本注入会自动回退到 `tabs.executeScript`。
 
+## 打包与发布
+
+```powershell
+npm.cmd run zip            # .output/translator-helper-<version>-chrome.zip
+npm.cmd run zip:firefox    # .output/translator-helper-<version>-firefox.zip
+```
+
+打 `v*` tag 后，GitHub Actions 会自动构建并创建 Release，附加 Chrome / Firefox zip：
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+当前版本仅做本地 zip / CI 发布，暂不上架商店。源码 sources zip 默认关闭；未来提交 Firefox AMO 时再按需开启。
+
 ## 文档
 
 - [新会话接续指南](docs/HANDOFF.md)
 - [项目搭建白皮书](docs/PROJECT_WHITEPAPER.md) —— 设计、架构、决策
 - [工程日志](docs/ENGINEERING_LOG.md) —— 进度、问题、下一步
+- [隐私政策](docs/PRIVACY.md)
 - [本地 manga-ocr 服务](ocr-service/README.md)
 
 ## 技术栈

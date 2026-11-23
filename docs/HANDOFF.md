@@ -13,7 +13,7 @@
    - `README.md`
 4. 检查：`git log --oneline -10`、`git status`
 5. 启动本地服务：`cd ocr-service; uv run app.py`（或 `run.cmd`）
-6. 继续下一个阶段（当前：P4.1 已完成，下一步 P4.2 自动气泡检测）
+6. 继续下一个阶段（当前：P4.5 已完成，0.2.0 可打包发布；P4.2/P4.3/P4.4 暂缓）
 
 ## 新会话提示词（可直接粘贴）
 
@@ -21,8 +21,8 @@
 项目：D:\Translator_helper（GitHub: bailu2005/Translator_helper）
 请先读 docs/HANDOFF.md、docs/ENGINEERING_LOG.md、docs/PROJECT_WHITEPAPER.md、README.md，
 并检查 git log / git status。
-当前阶段：P4.1 完成（Firefox 适配），下一步 P4.2 自动气泡检测。
-下一步：按 docs/ENGINEERING_LOG.md 7.4 的 P4 顺序推进。
+当前阶段：P4.5 完成（0.2.0 可打包发布），P4.2/P4.3/P4.4 暂缓。
+下一步：如需增强，再按 docs/ENGINEERING_LOG.md 7.4 补做自动气泡检测 / GPU / ONNX。
 约束：只做日文漫画；所有按钮遵循 UI 反馈规范；大改动先说明方案；完成后 commit/push。
 ```
 
@@ -38,10 +38,11 @@
 
 ## 当前状态
 
-- 已完成 P0–P3.5 与 P4.1（截至 2026-11-23）
+- 已完成 P0–P3.5、P4.1、P4.5（截至 2026-11-23），版本 `0.2.0`
 - 最新提交以 `git log` 为准
-- P4.1 已实现：Firefox 构建、`sidebar_action`、平台侧栏/脚本注入抽象、扩展 ID 与数据声明
-- 下一步 **P4.2**：自动气泡检测；之后 GPU、浏览器内 ONNX、发布
+- P4.1：Firefox 构建、`sidebar_action`、平台侧栏/脚本注入抽象、扩展 ID 与数据声明
+- P4.5：隐私政策、GitHub Pages 文档页、zip 打包、`v*` tag 自动 Release
+- 暂缓 **P4.2/P4.3/P4.4**：自动气泡检测、GPU、浏览器内 ONNX；不影响现有功能
 
 ## 强制 UI 规范
 
@@ -58,6 +59,8 @@
 - Python：`uv` + Python 3.12（`ocr-service/.python-version`）
 - 扩展构建：`npm.cmd run build` → `.output/chrome-mv3`
 - Firefox 构建：`npm.cmd run build:firefox` → `.output/firefox-mv2`（about:debugging 临时载入 `manifest.json`）
+- 打包：`npm.cmd run zip` / `npm.cmd run zip:firefox` → `.output/*.zip`
+- 发布：打 `v*` tag 后由 `.github/workflows/release.yml` 创建 GitHub Release；暂不上架商店
 - 本地 OCR：`cd ocr-service; uv run app.py`，停止用 `stop.cmd`
 - 模型：`ocr-service/models/manga-ocr-base`（约 423MB，已 gitignore）
 - 首次安装依赖：`uv sync`（阿里云 PyPI 镜像，见 `ocr-service/pyproject.toml`）

@@ -2,7 +2,7 @@
   "name": "translator-helper",
   "description": "框选网页图片/漫画文字，本地 OCR 识别并翻译到侧边栏",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",

@@ -1,8 +1,11 @@
 import type { Rect } from '../extract/geometry';
+import { createTranslator, type Translator } from '../i18n';
 
 const MIN_SELECTION_SIZE = 6;
 
-export function startSelectionOverlay(): Promise<Rect | null> {
+export function startSelectionOverlay(
+  tr: Translator = createTranslator('zh-CN'),
+): Promise<Rect | null> {
   return new Promise((resolve) => {
     const host = document.createElement('div');
     host.setAttribute('data-translator-helper', 'overlay');
@@ -62,11 +65,11 @@ export function startSelectionOverlay(): Promise<Rect | null> {
     const hint = document.createElement('div');
     hint.className = 'hint';
     const hintText = document.createElement('span');
-    hintText.textContent = '拖拽框选 · Esc / 右键取消';
+    hintText.textContent = tr('overlayHint');
     const cancelButton = document.createElement('button');
     cancelButton.type = 'button';
     cancelButton.className = 'cancel';
-    cancelButton.textContent = '取消';
+    cancelButton.textContent = tr('overlayCancel');
     hint.append(hintText, cancelButton);
 
     shadow.append(style, surface, box, hint);

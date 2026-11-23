@@ -1,6 +1,8 @@
 import { cropSelection } from '../lib/extract/crop';
+import { createTranslator } from '../lib/i18n';
 import { isStartSelection, type SelectionPayload } from '../lib/messaging/protocol';
 import { showToast, startSelectionOverlay } from '../lib/selection/overlay';
+import { loadSettings } from '../lib/settings';
 
 const READY_KEY = '__translatorHelperContentReady';
 
@@ -32,14 +34,16 @@ async function runSelection(): Promise<void> {
 
   selecting = true;
   try {
-    const rect = await startSelectionOverlay();
+    const settings = await loadSettings().catch(() => null);
+    const tr = createTranslator(settings?.uiLang ?? 'zh-CN');
+    const rect = await startSelectionOverlay(tr);
     if (!rect) {
       return;
     }
 
     const crop = await cropSelection(rect);
     if (!crop) {
-      showToast('未能读取该区域，请尝试直接框选图片内部。');
+      showToast(tr('contentCropFailed'));
       return;
     }
 
@@ -53,7 +57,7 @@ async function runSelection(): Promise<void> {
     };
 
     await browser.runtime.sendMessage({ type: 'SELECTION_CROPPED', payload }).catch(() => {});
-    showToast(`已截取 ${crop.width}×${crop.height} 区域，正在识别日文…`);
+    showToast(tr('contentCaptured', { width: crop.width, height: crop.height }));
   } finally {
     selecting = false;
   }

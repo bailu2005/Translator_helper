@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ErrorPanel } from '../../components/ErrorPanel';
+import { classifyError, makeError, type AppError } from '../../lib/errors';
 import {
   clearHistory,
   loadHistory,
@@ -6,6 +8,15 @@ import {
   removeHistoryItem,
   saveHistory,
 } from '../../lib/history';
+import {
+  clearHistoryMeta,
+  loadHistoryMeta,
+  removeHistoryMeta,
+  upsertHistoryMeta,
+  type HistoryMetaMap,
+  type HistoryMetaPatch,
+} from '../../lib/historyMeta';
+import { createTranslator, type MessageKey, type Translator, type UiLang } from '../../lib/i18n';
 import {
   isSelectionCropped,
   type SelectionPayload,
@@ -41,7 +52,7 @@ import {
 } from '../../lib/translate/cache';
 import { translateText } from '../../lib/translate/engine';
 import { loadGlossary, normalizeGlossary } from '../../lib/translate/glossary';
-import { targetLanguageLabel, type GlossaryEntry } from '../../lib/translate/types';
+import type { GlossaryEntry } from '../../lib/translate/types';
 
 interface OcrState {
   createdAt: number;
@@ -49,7 +60,7 @@ interface OcrState {
   progress: number;
   statusText?: string;
   result?: OcrResult;
-  error?: string;
+  error?: AppError;
   fallback?: boolean;
 }
 
@@ -60,7 +71,7 @@ interface TranslationState {
   text?: string;
   engine?: string;
   durationMs?: number;
-  error?: string;
+  error?: AppError;
 }
 
 interface LearningState {
@@ -72,14 +83,14 @@ interface LearningState {
   tokens?: TokenInfo[];
   engine?: string;
   durationMs?: number;
-  error?: string;
+  error?: AppError;
 }
 
 export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [history, setHistory] = useState<SelectionPayload[]>([]);
   const [activeCreatedAt, setActiveCreatedAt] = useState<number | null>(null);
-  const [status, setStatus] = useState('框选网页中的漫画/图片文字，识别结果会显示在这里。');
+  const [status, setStatus] = useState('');
   const [ocrState, setOcrState] = useState<OcrState | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   const [settingsReady, setSettingsReady] = useState(false);
@@ -93,9 +104,24 @@ export default function App() {
   const [glossary, setGlossary] = useState<GlossaryEntry[]>([]);
   const [learningState, setLearningState] = useState<LearningState | null>(null);
   const [learningCollapsed, setLearningCollapsed] = useState(false);
+  const [historyMeta, setHistoryMeta] = useState<HistoryMetaMap>({});
   const learningRequestId = useRef(0);
   const ocrCache = useRef(new Map<string, OcrResult>());
   const recentPairs = useRef<{ createdAt: number; source: string; translation?: string }[]>([]);
+  const historyMetaRef = useRef<HistoryMetaMap>({});
+  const metaWrite = useRef<Promise<void>>(Promise.resolve());
+
+  const lang: UiLang = settings?.uiLang ?? DEFAULT_SETTINGS.uiLang;
+  const tr = useMemo(() => createTranslator(lang), [lang]);
+
+  const persistHistoryMeta = (createdAt: number, patch: HistoryMetaPatch): Promise<void> => {
+    metaWrite.current = metaWrite.current.then(async () => {
+      const next = await upsertHistoryMeta(createdAt, patch);
+      historyMetaRef.current = next;
+      setHistoryMeta(next);
+    });
+    return metaWrite.current;
+  };
 
   const activeSelection = useMemo(
     () => history.find((item) => item.createdAt === activeCreatedAt) ?? null,
@@ -112,6 +138,7 @@ export default function App() {
       ? null
       : `${activeId}:${orientation}:${readingOrder}:${engineSetting}:${serviceUrl}`;
   const targetLang = settings?.targetLang ?? DEFAULT_SETTINGS.targetLang;
+  const targetLabel = targetLang === 'zh-TW' ? tr('targetTraditional') : tr('targetSimplified');
   const recognizedText = ocrState?.status === 'done' ? (ocrState.result?.text ?? '') : '';
   const translationCacheKey = useMemo(() => {
     if (!settings || !recognizedText) {
@@ -151,11 +178,16 @@ export default function App() {
 
     void loadGlossary().then(setGlossary);
 
+    void loadHistoryMeta().then((meta) => {
+      historyMetaRef.current = meta;
+      setHistoryMeta(meta);
+    });
+
     const listener = (message: unknown) => {
       if (isSelectionCropped(message)) {
         setHistory((previous) => mergeHistory(previous, [message.payload]));
         setActiveCreatedAt(message.payload.createdAt);
-        setStatus('已截取区域，正在识别日文。');
+        setStatus(tr('statusCaptured'));
       }
     };
 
@@ -218,7 +250,12 @@ export default function App() {
     }
 
     let cancelled = false;
-    setOcrState({ createdAt: activeId, status: 'running', progress: 0, statusText: '准备 OCR' });
+    setOcrState({
+      createdAt: activeId,
+      status: 'running',
+      progress: 0,
+      statusText: tr('ocrPreparing'),
+    });
 
     void recognizeSelection(activeDataUrl, settings, {
       orientation,
@@ -242,7 +279,13 @@ export default function App() {
           result: outcome.result,
           fallback: outcome.fallback,
         });
-        setStatus(outcome.fallback ? '本地 manga-ocr 不可用，已回退 Tesseract。' : '识别完成。');
+        setStatus(tr(outcome.fallback ? 'statusOcrFallback' : 'statusOcrDone'));
+        void persistHistoryMeta(activeId, {
+          ocrText: outcome.result.text,
+          ocrEngine: outcome.result.engine,
+          ocrConfidence: outcome.result.confidence ?? null,
+          ocrDurationMs: outcome.result.durationMs,
+        });
       })
       .catch((error: unknown) => {
         if (cancelled) return;
@@ -250,10 +293,10 @@ export default function App() {
           createdAt: activeId,
           status: 'error',
           progress: 0,
-          error: error instanceof Error ? error.message : String(error),
+          error: classifyError(error, 'ocr'),
         });
-        setStatus('识别失败，可点击「重新识别」。');
-        showToast('识别失败', 'error');
+        setStatus(tr('statusOcrFailed'));
+        showToast(tr('ocrFailedTitle'), 'error');
       });
 
     return () => {
@@ -284,11 +327,27 @@ export default function App() {
       return;
     }
 
+    const meta = historyMetaRef.current[String(activeId)];
+    if (!manual && meta?.translation && meta.ocrText === recognizedText) {
+      setTranslationState({
+        createdAt: activeId,
+        status: 'done',
+        text: meta.translation,
+        engine: meta.translationEngine,
+        durationMs: meta.translationDurationMs,
+      });
+      recentPairs.current = [
+        ...recentPairs.current.filter((pair) => pair.createdAt !== activeId),
+        { createdAt: activeId, source: recognizedText, translation: meta.translation },
+      ].slice(-5);
+      return;
+    }
+
     let cancelled = false;
     setTranslationState({
       createdAt: activeId,
       status: 'running',
-      statusText: '准备翻译',
+      statusText: tr('translationProgressPreparing'),
     });
 
     const run = async () => {
@@ -308,6 +367,11 @@ export default function App() {
           ...recentPairs.current.filter((pair) => pair.createdAt !== activeId),
           { createdAt: activeId, source: recognizedText, translation: cached.text },
         ].slice(-5);
+        void persistHistoryMeta(activeId, {
+          translation: cached.text,
+          translationEngine: cached.engine,
+          translationDurationMs: cached.durationMs,
+        });
         return;
       }
 
@@ -364,9 +428,14 @@ export default function App() {
           ...recentPairs.current.filter((pair) => pair.createdAt !== activeId),
           { createdAt: activeId, source: recognizedText, translation: result.text },
         ].slice(-5);
-        setStatus('翻译完成。');
+        void persistHistoryMeta(activeId, {
+          translation: result.text,
+          translationEngine: result.engine,
+          translationDurationMs: result.durationMs,
+        });
+        setStatus(tr('statusTranslationDone'));
         if (manual) {
-          showToast('翻译完成', 'success');
+          showToast(tr('statusTranslationDone'), 'success');
         }
       } catch (error) {
         if (cancelled) {
@@ -375,10 +444,10 @@ export default function App() {
         setTranslationState({
           createdAt: activeId,
           status: 'error',
-          error: error instanceof Error ? error.message : String(error),
+          error: classifyError(error, 'translation'),
         });
-        setStatus('翻译失败，可点击「重新翻译」。');
-        showToast('翻译失败', 'error');
+        setStatus(tr('statusTranslationFailed'));
+        showToast(tr('translationFailedTitle'), 'error');
       }
     };
 
@@ -400,17 +469,36 @@ export default function App() {
 
   useEffect(() => {
     learningRequestId.current += 1;
+    const meta = activeId ? historyMetaRef.current[String(activeId)] : undefined;
+    if (meta?.learning && meta.ocrText === recognizedText) {
+      const snapshot = meta.learning;
+      setLearningState({
+        createdAt: activeId as number,
+        status: 'done',
+        mode: snapshot.mode,
+        card: snapshot.card,
+        tokens: snapshot.tokens,
+        engine: snapshot.engine,
+        durationMs: snapshot.durationMs,
+      });
+      setLearningCollapsed(false);
+      return;
+    }
     setLearningState(null);
     setLearningCollapsed(false);
   }, [activeId, recognizedText, targetLang]);
 
   useEffect(() => {
     setLearningState((previous) => {
-      if (previous?.mode === 'llm') {
-        learningRequestId.current += 1;
-        return null;
+      if (previous?.mode !== 'llm') {
+        return previous;
       }
-      return previous;
+      const meta = activeId ? historyMetaRef.current[String(activeId)] : undefined;
+      if (meta?.learning?.mode === 'llm' && meta.translation === translationText) {
+        return previous;
+      }
+      learningRequestId.current += 1;
+      return null;
     });
   }, [translationText]);
 
@@ -423,20 +511,36 @@ export default function App() {
     if (!tab?.id) return;
 
     if (await tryStartSelection(tab.id)) {
-      setStatus('已进入框选模式，请在页面中拖拽选择文字区域。');
-      showToast('已进入框选模式', 'info');
+      setStatus(tr('statusSelectionMode'));
+      showToast(tr('selectionModeTitle'), 'info');
       return;
     }
 
     const injected = await injectContentScript(tab.id).catch(() => false);
     if (injected && (await tryStartSelection(tab.id))) {
-      setStatus('已进入框选模式，请在页面中拖拽选择文字区域。');
-      showToast('已进入框选模式', 'info');
+      setStatus(tr('statusSelectionMode'));
+      showToast(tr('selectionModeTitle'), 'info');
       return;
     }
 
-    setStatus('无法在此页面框选：请刷新页面后重试；chrome://、扩展商店、PDF 等页面不支持。');
-    showToast('无法在此页面框选', 'error');
+    setStatus(tr('statusCannotSelect'));
+    showToast(tr('cannotSelectTitle'), 'error');
+  };
+
+  const selectHistory = (createdAt: number) => {
+    const meta = historyMetaRef.current[String(createdAt)];
+    if (meta?.ocrText) {
+      const key = `${createdAt}:${orientation}:${readingOrder}:${engineSetting}:${serviceUrl}`;
+      if (!ocrCache.current.has(key)) {
+        ocrCache.current.set(key, {
+          text: meta.ocrText,
+          confidence: meta.ocrConfidence ?? null,
+          engine: meta.ocrEngine ?? 'history',
+          durationMs: meta.ocrDurationMs ?? 0,
+        });
+      }
+    }
+    setActiveCreatedAt(createdAt);
   };
 
   const removeItem = async (createdAt: number) => {
@@ -451,20 +555,26 @@ export default function App() {
       }
     }
     await saveHistory(next);
-    setStatus('已删除该条截取记录。');
-    showToast('已删除截取记录', 'success');
+    const nextMeta = await removeHistoryMeta(createdAt);
+    historyMetaRef.current = nextMeta;
+    setHistoryMeta(nextMeta);
+    setStatus(tr('statusHistoryDeleted'));
+    showToast(tr('historyDeletedTitle'), 'success');
   };
 
   const clearAll = async () => {
-    if (!window.confirm('确定清空历史记录吗？')) {
+    if (!window.confirm(tr('confirmClearHistory'))) {
       return;
     }
     await clearHistory();
+    await clearHistoryMeta();
+    historyMetaRef.current = {};
+    setHistoryMeta({});
     setHistory([]);
     setActiveCreatedAt(null);
     ocrCache.current.clear();
-    setStatus('历史记录已清空。');
-    showToast('历史记录已清空', 'success');
+    setStatus(tr('statusHistoryCleared'));
+    showToast(tr('historyClearedTitle'), 'success');
   };
 
   const retryOcr = () => {
@@ -483,13 +593,13 @@ export default function App() {
     setServiceStatus(status);
     setServiceChecking(false);
     if (!status.available) {
-      showToast('本地服务未连接', 'error');
+      showToast(tr('serviceToastDown'), 'error');
     } else if (status.loading) {
-      showToast('本地服务：模型加载中', 'info');
+      showToast(tr('serviceToastLoading'), 'info');
     } else if (status.ready) {
-      showToast('本地服务可用', 'success');
+      showToast(tr('serviceToastReady'), 'success');
     } else {
-      showToast('本地服务未就绪', 'error');
+      showToast(tr('serviceToastNotReady'), 'error');
     }
   };
 
@@ -508,21 +618,26 @@ export default function App() {
     }
     try {
       await navigator.clipboard.writeText(text);
-      setStatus('已复制译文。');
-      showToast('已复制译文', 'success');
+      setStatus(tr('statusCopyTranslationDone'));
+      showToast(tr('copyTranslationDoneTitle'), 'success');
     } catch {
-      setStatus('复制失败，请手动选择文本。');
-      showToast('复制失败', 'error');
+      setStatus(tr('statusCopyFailed'));
+      showToast(tr('copyFailedTitle'), 'error');
     }
   };
 
   const addWordToNotebook = async (word: Omit<VocabularyInput, 'source' | 'translation'>) => {
-    await addVocabularyEntry({
-      ...word,
-      source: recognizedText,
-      translation: translationText,
-    });
-    setStatus(`已加入生词本：${word.surface}`);
+    try {
+      await addVocabularyEntry({
+        ...word,
+        source: recognizedText,
+        translation: translationText,
+      });
+      setStatus(tr('statusAddedVocabulary', { surface: word.surface }));
+      showToast(tr('statusAddedVocabulary', { surface: word.surface }), 'success');
+    } catch (error) {
+      showToast(classifyError(error, 'save').message, 'error');
+    }
   };
 
   const generateLearning = async (force = false) => {
@@ -539,7 +654,7 @@ export default function App() {
         createdAt: capturedId,
         status: 'running',
         mode,
-        statusText: '本地分词',
+        statusText: tr('learningProgressTokenize'),
       });
 
       const started = performance.now();
@@ -548,17 +663,27 @@ export default function App() {
         if (requestId !== learningRequestId.current) {
           return;
         }
+        const durationMs = Math.round(performance.now() - started);
         setLearningState({
           createdAt: capturedId,
           status: 'done',
           mode,
           tokens: result.tokens,
           engine: '本地分词 (fugashi)',
-          durationMs: Math.round(performance.now() - started),
+          durationMs,
         });
         setLearningCollapsed(false);
-        setStatus('本地分词完成。');
-        showToast('本地分词完成', 'success');
+        setStatus(tr('statusBasicDone'));
+        showToast(tr('statusBasicDone'), 'success');
+        void persistHistoryMeta(capturedId, {
+          learning: {
+            mode,
+            tokens: result.tokens,
+            engine: '本地分词 (fugashi)',
+            durationMs,
+            updatedAt: Date.now(),
+          },
+        });
       } catch (error) {
         if (requestId !== learningRequestId.current) {
           return;
@@ -567,10 +692,10 @@ export default function App() {
           createdAt: capturedId,
           status: 'error',
           mode,
-          error: error instanceof Error ? error.message : String(error),
+          error: classifyError(error, 'learning'),
         });
-        setStatus('本地分词失败。');
-        showToast('本地分词失败', 'error');
+        setStatus(tr('learningBasicFailedTitle'));
+        showToast(tr('learningBasicFailedTitle'), 'error');
       }
       return;
     }
@@ -594,6 +719,15 @@ export default function App() {
           engine: cached.engine,
           durationMs: cached.durationMs,
         });
+        void persistHistoryMeta(capturedId, {
+          learning: {
+            mode,
+            card: cached.card,
+            engine: cached.engine,
+            durationMs: cached.durationMs,
+            updatedAt: Date.now(),
+          },
+        });
         return;
       }
     } else {
@@ -604,7 +738,7 @@ export default function App() {
       createdAt: capturedId,
       status: 'running',
       mode,
-      statusText: '生成学习卡',
+      statusText: tr('learningProgressCard'),
     });
 
     const context = recentPairs.current
@@ -642,8 +776,17 @@ export default function App() {
         durationMs: result.durationMs,
       });
       setLearningCollapsed(false);
-      setStatus('学习卡已生成。');
-      showToast('学习卡已生成', 'success');
+      setStatus(tr('statusLearningDone'));
+      showToast(tr('statusLearningDone'), 'success');
+      void persistHistoryMeta(capturedId, {
+        learning: {
+          mode,
+          card: result.card,
+          engine: result.engine,
+          durationMs: result.durationMs,
+          updatedAt: Date.now(),
+        },
+      });
     } catch (error) {
       if (requestId !== learningRequestId.current) {
         return;
@@ -652,10 +795,10 @@ export default function App() {
         createdAt: capturedId,
         status: 'error',
         mode,
-        error: error instanceof Error ? error.message : String(error),
+        error: classifyError(error, 'learning'),
       });
-      setStatus('学习卡生成失败。');
-      showToast('学习卡生成失败', 'error');
+      setStatus(tr('learningCardFailedTitle'));
+      showToast(tr('learningCardFailedTitle'), 'error');
     }
   };
 
@@ -684,20 +827,20 @@ export default function App() {
 
     try {
       await navigator.clipboard.writeText(text);
-      setStatus('已复制识别文本。');
-      showToast('已复制识别文本', 'success');
+      setStatus(tr('statusCopyOcrDone'));
+      showToast(tr('copyOcrDoneTitle'), 'success');
     } catch {
-      setStatus('复制失败，请手动选择文本。');
-      showToast('复制失败', 'error');
+      setStatus(tr('statusCopyFailed'));
+      showToast(tr('copyFailedTitle'), 'error');
     }
   };
 
   const renderOcr = () => {
     if (!activeSelection) {
-      return <p className="placeholder">先框选一个区域。</p>;
+      return <p className="placeholder">{tr('ocrSelectFirst')}</p>;
     }
     if (!ocrState || ocrState.createdAt !== activeSelection.createdAt) {
-      return <p className="placeholder">准备识别…</p>;
+      return <p className="placeholder">{tr('ocrPreparing')}</p>;
     }
     if (ocrState.status === 'running') {
       const indeterminate = ocrState.progress < 0;
@@ -713,53 +856,73 @@ export default function App() {
             />
           </div>
           <span className="progress-label">
-            {ocrProgressLabel(ocrState.statusText)}
+            {ocrProgressLabel(ocrState.statusText, tr)}
             {indeterminate ? '…' : ` ${percent}%`}
           </span>
         </div>
       );
     }
     if (ocrState.status === 'error') {
-      return <p className="ocr-error">识别失败：{ocrState.error ?? '未知错误'}</p>;
+      return (
+        <ErrorPanel
+          error={ocrState.error ?? makeError('unknown', '', 'ocr')}
+          lang={lang}
+          onRetry={retryOcr}
+          retryLabel={tr('ocrRetry')}
+          retryDisabled={ocrBusy}
+        />
+      );
     }
 
     const result = ocrState.result;
     if (!result) {
-      return <p className="placeholder">暂无结果。</p>;
+      return <p className="placeholder">{tr('ocrNoResult')}</p>;
     }
 
     return (
       <div className="ocr-result">
-        <pre className="ocr-text">{result.text || '（未识别到文字）'}</pre>
+        <pre className="ocr-text">{result.text || tr('ocrEmptyText')}</pre>
         <p className="ocr-meta">
           {typeof result.confidence === 'number'
-            ? `置信度 ${Math.round(result.confidence)}% · `
+            ? `${tr('ocrConfidence', { value: Math.round(result.confidence) })} · `
             : ''}
-          {result.engine} · {result.durationMs}ms
+          {tr('ocrMeta', { engine: result.engine, duration: result.durationMs })}
         </p>
-        {ocrState.fallback && (
-          <p className="ocr-note">本地 manga-ocr 不可用，已使用内置 Tesseract。</p>
+        {!result.text && (
+          <div className="error-panel" role="alert">
+            <p className="error-title">{tr('error.title.emptyOcr')}</p>
+            <p className="error-hint">{tr('error.hint.emptyOcr')}</p>
+            <button
+              className="ghost error-retry"
+              onClick={retryOcr}
+              disabled={ocrBusy}
+              type="button"
+            >
+              {ocrBusy ? tr('stateRetrying') : tr('ocrRetry')}
+            </button>
+          </div>
         )}
+        {ocrState.fallback && <p className="ocr-note">{tr('ocrFallbackNote')}</p>}
       </div>
     );
   };
 
   const renderTranslation = () => {
     if (!activeSelection) {
-      return <p className="placeholder">先框选一个区域。</p>;
+      return <p className="placeholder">{tr('ocrSelectFirst')}</p>;
     }
     if (ocrState?.status !== 'done' || !ocrState.result?.text) {
-      return <p className="placeholder">等待日文识别完成。</p>;
+      return <p className="placeholder">{tr('translationWaitingOcr')}</p>;
     }
     if (
       !settings?.autoTranslate &&
       manualTranslation?.createdAt !== activeSelection.createdAt &&
       translationState?.status !== 'done'
     ) {
-      return <p className="placeholder">自动翻译已关闭，点击「翻译」开始。</p>;
+      return <p className="placeholder">{tr('translationAutoOff')}</p>;
     }
     if (!translationState || translationState.createdAt !== activeSelection.createdAt) {
-      return <p className="placeholder">准备翻译…</p>;
+      return <p className="placeholder">{tr('translationPreparing')}</p>;
     }
     if (translationState.status === 'running') {
       return (
@@ -771,20 +934,35 @@ export default function App() {
             <div className="progress-track">
               <div className="progress-bar indeterminate" />
             </div>
-            <span className="progress-label">{translationState.statusText ?? '翻译中'}…</span>
+            <span className="progress-label">
+              {translationState.statusText ?? tr('translationTranslating')}…
+            </span>
           </div>
         </div>
       );
     }
     if (translationState.status === 'error') {
-      return <p className="ocr-error">翻译失败：{translationState.error ?? '未知错误'}</p>;
+      return (
+        <ErrorPanel
+          error={translationState.error ?? makeError('unknown', '', 'translation')}
+          lang={lang}
+          onRetry={() => void requestTranslation()}
+          retryLabel={tr('translationRetry')}
+          retryDisabled={translationBusy}
+        />
+      );
     }
 
     return (
       <div className="translation-result">
-        <p className="translation-text">{translationState.text || '（空）'}</p>
+        <p className="translation-text">{translationState.text || tr('translationEmpty')}</p>
         <p className="ocr-meta">
-          {translationState.engine} · {translationState.durationMs}ms
+          {translationState.engine && translationState.durationMs !== undefined
+            ? tr('translationMeta', {
+                engine: translationState.engine,
+                duration: translationState.durationMs,
+              })
+            : translationState.engine}
         </p>
       </div>
     );
@@ -792,20 +970,18 @@ export default function App() {
 
   const renderLearning = () => {
     if (!activeSelection) {
-      return <p className="placeholder">先框选一个区域。</p>;
+      return <p className="placeholder">{tr('learningSelectFirst')}</p>;
     }
     if (ocrState?.status !== 'done' || !recognizedText) {
-      return <p className="placeholder">等待日文识别完成。</p>;
+      return <p className="placeholder">{tr('learningWaitingOcr')}</p>;
     }
     if (llmConfigured && (translationState?.status !== 'done' || !translationText)) {
-      return <p className="placeholder">翻译完成后可生成学习卡。</p>;
+      return <p className="placeholder">{tr('learningWaitTranslation')}</p>;
     }
     if (!learningState || learningState.createdAt !== activeSelection.createdAt) {
       return (
         <p className="placeholder">
-          {llmConfigured
-            ? '点击「生成学习卡」查看词汇与语法讲解。'
-            : '点击「本地分词」查看读音/词性/辞书形；配置 LLM 可获得释义和语法讲解。'}
+          {llmConfigured ? tr('learningPlaceholderLlm') : tr('learningPlaceholderBasic')}
         </p>
       );
     }
@@ -815,32 +991,39 @@ export default function App() {
           <div className="progress-track">
             <div className="progress-bar indeterminate" />
           </div>
-          <span className="progress-label">{learningState.statusText ?? '处理中'}…</span>
+          <span className="progress-label">
+            {learningState.statusText ?? tr('learningGenerating')}…
+          </span>
         </div>
       );
     }
     if (learningState.status === 'error') {
       return (
-        <p className="ocr-error">
-          {learningState.mode === 'basic' ? '本地分词失败' : '学习卡生成失败'}：
-          {learningState.error ?? '未知错误'}
-        </p>
+        <ErrorPanel
+          error={learningState.error ?? makeError('unknown', '', 'learning')}
+          lang={lang}
+          onRetry={() => void generateLearning(true)}
+          retryLabel={
+            learningState.mode === 'basic' ? tr('learningRetokenize') : tr('learningRegenerate')
+          }
+          retryDisabled={learningBusy}
+        />
       );
     }
 
     if (learningState.mode === 'basic') {
       const tokens = learningState.tokens ?? [];
       if (learningCollapsed) {
-        return <p className="placeholder">已分词：{tokens.length} 个词（点击「展开」查看）</p>;
+        return (
+          <p className="placeholder">{tr('learningCollapsedBasic', { count: tokens.length })}</p>
+        );
       }
       if (tokens.length === 0) {
-        return <p className="placeholder">未分词到内容。</p>;
+        return <p className="placeholder">{tr('learningEmptyTokens')}</p>;
       }
       return (
         <div className="learn-list">
-          <p className="ocr-note">
-            本地分词只提供读音/词性/辞书形；配置 LLM 可获得中文释义、用法和语法讲解。
-          </p>
+          <p className="ocr-note">{tr('learningBasicNote')}</p>
           {tokens.map((token, index) => (
             <div className="learn-word" key={`${token.surface}-${index}`}>
               <div className="learn-word-head">
@@ -861,14 +1044,16 @@ export default function App() {
                   }
                   type="button"
                 >
-                  加入生词本
+                  {tr('learningAddVocabulary')}
                 </button>
               </div>
               {(token.lemma || token.form) && (
                 <p className="learn-detail">
-                  {token.lemma && token.lemma !== token.surface ? `辞书形：${token.lemma}` : ''}
+                  {token.lemma && token.lemma !== token.surface
+                    ? tr('learningLemma', { lemma: token.lemma })
+                    : ''}
                   {token.form
-                    ? `${token.lemma && token.lemma !== token.surface ? ' · ' : ''}活用：${token.form}`
+                    ? `${token.lemma && token.lemma !== token.surface ? ' · ' : ''}${tr('learningForm', { form: token.form })}`
                     : ''}
                 </p>
               )}
@@ -883,12 +1068,12 @@ export default function App() {
 
     const card = learningState.card;
     if (!card) {
-      return <p className="placeholder">暂无内容。</p>;
+      return <p className="placeholder">{tr('learningNoContent')}</p>;
     }
     if (learningCollapsed) {
       return (
         <p className="placeholder">
-          已生成：{card.words.length} 个词 / {card.grammar.length} 个语法点（点击「展开」查看）
+          {tr('learningCollapsedLlm', { words: card.words.length, grammar: card.grammar.length })}
         </p>
       );
     }
@@ -915,20 +1100,28 @@ export default function App() {
                 }
                 type="button"
               >
-                加入生词本
+                {tr('learningAddVocabulary')}
               </button>
             </div>
             {word.meaning && <p className="learn-meaning">{word.meaning}</p>}
-            {word.usage && <p className="learn-detail">用法：{word.usage}</p>}
-            {word.example && <p className="learn-example">例：{word.example}</p>}
+            {word.usage && (
+              <p className="learn-detail">{tr('learningUsage', { text: word.usage })}</p>
+            )}
+            {word.example && (
+              <p className="learn-example">{tr('learningExample', { text: word.example })}</p>
+            )}
           </div>
         ))}
         {card.grammar.map((grammar, index) => (
           <div className="learn-grammar" key={`${grammar.pattern}-${index}`}>
             <p className="learn-pattern">{grammar.pattern}</p>
             {grammar.meaning && <p className="learn-meaning">{grammar.meaning}</p>}
-            {grammar.nuance && <p className="learn-detail">语感：{grammar.nuance}</p>}
-            {grammar.example && <p className="learn-example">例：{grammar.example}</p>}
+            {grammar.nuance && (
+              <p className="learn-detail">{tr('learningNuance', { text: grammar.nuance })}</p>
+            )}
+            {grammar.example && (
+              <p className="learn-example">{tr('learningExample', { text: grammar.example })}</p>
+            )}
           </div>
         ))}
         <p className="ocr-meta">
@@ -942,37 +1135,37 @@ export default function App() {
     <main className="panel">
       <header className="panel-header">
         <div>
-          <h1>Translator Helper</h1>
-          <p className="subtitle">漫画 / 图片文字 · 本地识别 · 翻译到中文</p>
+          <h1>{tr('appName')}</h1>
+          <p className="subtitle">{tr('subtitle')}</p>
         </div>
         <div className="header-actions">
           <button className="ghost" onClick={() => openOptions('vocabulary')} type="button">
-            生词本
+            {tr('navVocabulary')}
           </button>
           <button className="ghost" onClick={() => openOptions('settings')} type="button">
-            设置
+            {tr('optionsTabSettings')}
           </button>
         </div>
       </header>
 
-      <button className="primary" onClick={startSelection}>
-        开始框选
+      <button className="primary" onClick={startSelection} type="button">
+        {tr('startSelection')}
       </button>
 
-      <p className="status">{status}</p>
+      <p className="status">{status || tr('statusIdle')}</p>
 
       <section className="ocr">
         <div className="result-head">
-          <h2>识别结果（日文）</h2>
+          <h2>{tr('ocrTitle')}</h2>
           <div className="head-actions">
             {ocrState?.status === 'done' && ocrState.result?.text && (
               <button className="ghost" onClick={() => void copyOcrText()} type="button">
-                复制
+                {tr('ocrCopy')}
               </button>
             )}
             {activeSelection && (
               <button className="ghost" onClick={retryOcr} disabled={ocrBusy} type="button">
-                {ocrBusy ? '识别中…' : '重新识别'}
+                {ocrBusy ? tr('ocrRetrying') : tr('ocrRetry')}
               </button>
             )}
           </div>
@@ -980,50 +1173,52 @@ export default function App() {
 
         <div className="ocr-options">
           <label>
-            引擎
+            {tr('ocrEngine')}
             <select
               value={engineSetting}
               onChange={(event) =>
                 updateOcrSettings({ ocrEngine: event.target.value as OcrEngineSetting })
               }
             >
-              <option value="auto">本地 manga-ocr（失败回退）</option>
-              <option value="tesseract">内置 Tesseract</option>
+              <option value="auto">{tr('ocrEngineAuto')}</option>
+              <option value="tesseract">{tr('ocrEngineTesseract')}</option>
             </select>
           </label>
           <label>
-            方向
+            {tr('ocrOrientation')}
             <select
               value={orientation}
               onChange={(event) => changeOrientation(event.target.value as OcrOrientation)}
             >
-              <option value="vertical">竖排</option>
-              <option value="horizontal">横排</option>
+              <option value="vertical">{tr('ocrVertical')}</option>
+              <option value="horizontal">{tr('ocrHorizontal')}</option>
             </select>
           </label>
           <label>
-            顺序
+            {tr('ocrOrder')}
             <select
               value={readingOrder}
               onChange={(event) => changeReadingOrder(event.target.value as ReadingOrder)}
             >
-              <option value="rtl">右 → 左</option>
-              <option value="ltr">左 → 右</option>
+              <option value="rtl">{tr('ocrRtl')}</option>
+              <option value="ltr">{tr('ocrLtr')}</option>
             </select>
           </label>
         </div>
 
-        <p className="ocr-hint">方向/顺序仅在内置 Tesseract 生效；本地 manga-ocr 自动处理。</p>
+        <p className="ocr-hint">{tr('ocrHint')}</p>
 
         <div className="service-status">
-          <span>{serviceStatusLabel(serviceStatus, serviceChecking)}</span>
+          <span title={serviceStatus?.error}>
+            {serviceStatusLabel(serviceStatus, serviceChecking, tr)}
+          </span>
           <button
             className="ghost"
             onClick={() => void refreshService()}
             disabled={serviceChecking}
             type="button"
           >
-            {serviceChecking ? '检测中…' : '重试连接'}
+            {serviceChecking ? tr('serviceRetrying') : tr('serviceRetry')}
           </button>
         </div>
 
@@ -1032,24 +1227,25 @@ export default function App() {
 
       <section className="translation">
         <div className="result-head">
-          <h2>译文（{targetLanguageLabel(targetLang)}）</h2>
+          <h2>{tr('translationTitle', { lang: targetLabel })}</h2>
           <div className="head-actions">
             {translationState?.status === 'done' && translationState.text && (
               <button className="ghost" onClick={() => void copyTranslation()} type="button">
-                复制
+                {tr('translationCopy')}
               </button>
             )}
             <button
               className="ghost"
               onClick={() => void requestTranslation()}
               disabled={!recognizedText || translationBusy}
+              title={!recognizedText ? tr('translationWaitingOcr') : undefined}
               type="button"
             >
               {translationBusy
-                ? '翻译中…'
+                ? tr('translationTranslating')
                 : translationState?.status === 'done'
-                  ? '重新翻译'
-                  : '翻译'}
+                  ? tr('translationRetry')
+                  : tr('translationTranslate')}
             </button>
           </div>
         </div>
@@ -1058,7 +1254,7 @@ export default function App() {
 
       <section className="learning">
         <div className="result-head">
-          <h2>学习（词汇 / 语法）</h2>
+          <h2>{tr('learningTitle')}</h2>
           <div className="head-actions">
             {learningState?.status === 'done' && (
               <>
@@ -1067,10 +1263,12 @@ export default function App() {
                   onClick={() => setLearningCollapsed((value) => !value)}
                   type="button"
                 >
-                  {learningCollapsed ? '展开' : '收起'}
+                  {learningCollapsed ? tr('actionExpand') : tr('actionCollapse')}
                 </button>
                 <button className="ghost" onClick={() => void generateLearning(true)} type="button">
-                  {learningState?.mode === 'basic' ? '重新分词' : '重新生成'}
+                  {learningState?.mode === 'basic'
+                    ? tr('learningRetokenize')
+                    : tr('learningRegenerate')}
                 </button>
               </>
             )}
@@ -1079,9 +1277,14 @@ export default function App() {
                 className="ghost"
                 onClick={() => void generateLearning()}
                 disabled={!canGenerateLearning || learningBusy}
+                title={!canGenerateLearning ? tr('learningWaitTranslation') : undefined}
                 type="button"
               >
-                {learningBusy ? '处理中…' : llmConfigured ? '生成学习卡' : '本地分词'}
+                {learningBusy
+                  ? tr('learningGenerating')
+                  : llmConfigured
+                    ? tr('learningGenerate')
+                    : tr('learningTokenize')}
               </button>
             )}
           </div>
@@ -1091,86 +1294,102 @@ export default function App() {
 
       <section className="result">
         <div className="result-head">
-          <h2>截取预览</h2>
+          <h2>{tr('previewTitle')}</h2>
           {activeSelection && (
             <button
               className="ghost"
               onClick={() => void removeItem(activeSelection.createdAt)}
               type="button"
             >
-              删除
+              {tr('previewDelete')}
             </button>
           )}
         </div>
 
         {activeSelection ? (
           <div className="preview">
-            <img src={activeSelection.dataUrl} alt="框选区域预览" />
+            <img src={activeSelection.dataUrl} alt={tr('previewTitle')} />
             <dl>
               <div>
-                <dt>尺寸</dt>
+                <dt>{tr('previewSize')}</dt>
                 <dd>
                   {activeSelection.width} × {activeSelection.height}
                 </dd>
               </div>
               <div>
-                <dt>来源</dt>
-                <dd>{sourceLabel(activeSelection.source)}</dd>
+                <dt>{tr('previewSource')}</dt>
+                <dd>{sourceLabel(activeSelection.source, tr)}</dd>
               </div>
             </dl>
           </div>
         ) : (
-          <p className="placeholder">暂无内容</p>
+          <p className="placeholder">{tr('previewEmpty')}</p>
         )}
       </section>
 
       <section className="history">
         <div className="result-head">
-          <h2>历史记录{history.length > 0 ? `（${history.length}）` : ''}</h2>
+          <h2>
+            {history.length > 0
+              ? tr('historyTitleCount', { count: history.length })
+              : tr('historyTitle')}
+          </h2>
           {history.length > 0 && (
             <button className="ghost" onClick={() => void clearAll()} type="button">
-              清空
+              {tr('historyClear')}
             </button>
           )}
         </div>
 
         {history.length > 0 ? (
           <ul className="history-list">
-            {history.map((item) => (
-              <li
-                key={item.createdAt}
-                className={item.createdAt === activeCreatedAt ? 'active' : undefined}
-              >
-                <button
-                  className="thumb"
-                  onClick={() => setActiveCreatedAt(item.createdAt)}
-                  title={`${item.width} × ${item.height} · ${sourceLabel(item.source)}`}
-                  type="button"
+            {history.map((item) => {
+              const meta = historyMeta[String(item.createdAt)];
+              return (
+                <li
+                  key={item.createdAt}
+                  className={item.createdAt === activeCreatedAt ? 'active' : undefined}
                 >
-                  <img src={item.dataUrl} alt="" />
-                  <span>
-                    {item.width}×{item.height}
-                  </span>
-                </button>
-                <button
-                  className="remove"
-                  onClick={() => void removeItem(item.createdAt)}
-                  aria-label="删除这条记录"
-                  type="button"
-                >
-                  ×
-                </button>
-              </li>
-            ))}
+                  <button
+                    className="thumb"
+                    onClick={() => selectHistory(item.createdAt)}
+                    title={
+                      meta?.translation
+                        ? `${item.width} × ${item.height} · ${sourceLabel(item.source, tr)} · ${meta.translation}`
+                        : `${item.width} × ${item.height} · ${sourceLabel(item.source, tr)}`
+                    }
+                    type="button"
+                  >
+                    <img src={item.dataUrl} alt="" />
+                    <span>
+                      {item.width}×{item.height}
+                    </span>
+                    {meta?.translation && (
+                      <span className="thumb-badge">{tr('historyTranslatedBadge')}</span>
+                    )}
+                  </button>
+                  <button
+                    className="remove"
+                    onClick={() => void removeItem(item.createdAt)}
+                    aria-label={tr('historyDeleteAria')}
+                    type="button"
+                  >
+                    ×
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         ) : (
-          <p className="placeholder">暂无历史</p>
+          <p className="placeholder">{tr('historyEmpty')}</p>
         )}
       </section>
 
       <footer>
-        源语言：{settings ? settings.sourceLang : '...'} · 目标语言：
-        {settings ? settings.targetLang : '...'}
+        {tr('footerSummary', {
+          source: settings ? settings.sourceLang : '...',
+          target: settings ? settings.targetLang : '...',
+        })}
       </footer>
     </main>
   );
@@ -1196,37 +1415,42 @@ async function injectContentScript(tabId: number): Promise<boolean> {
   return true;
 }
 
-function serviceStatusLabel(status: ServiceStatus | null, checking: boolean): string {
+function serviceStatusLabel(
+  status: ServiceStatus | null,
+  checking: boolean,
+  tr: Translator,
+): string {
   if (checking) {
-    return '本地服务：检测中…';
+    return tr('serviceChecking');
   }
   if (!status) {
-    return '本地服务：未检测';
+    return tr('serviceNotDetected');
   }
   if (!status.available) {
-    return '本地服务：未启动（将回退 Tesseract）';
+    return tr('serviceDown');
   }
   if (status.loading) {
-    return '本地服务：模型加载中（将回退 Tesseract）';
+    return tr('serviceLoading');
   }
   if (status.ready) {
-    return '本地服务：可用';
+    return tr('serviceReady');
   }
-  return '本地服务：未就绪（将回退 Tesseract）';
+  return tr('serviceNotReady');
 }
 
-function ocrProgressLabel(status?: string): string {
-  const labels: Record<string, string> = {
-    'loading tesseract core': '加载 OCR 引擎',
-    'loading language traineddata': '加载日语模型',
-    'initializing tesseract': '初始化 OCR',
-    'recognizing text': '识别文字',
+function ocrProgressLabel(status: string | undefined, tr: Translator): string {
+  const labels: Record<string, MessageKey> = {
+    'loading tesseract core': 'ocrProgressLoadingCore',
+    'loading language traineddata': 'ocrProgressLanguage',
+    'initializing tesseract': 'ocrProgressInit',
+    'recognizing text': 'ocrProgressRecognize',
   };
 
   if (!status) {
-    return '识别中';
+    return tr('ocrProgress');
   }
-  return labels[status] ?? status;
+  const key = labels[status];
+  return key ? tr(key) : status;
 }
 
 function mergeHistory(
@@ -1247,18 +1471,18 @@ function mergeHistory(
   return merged.slice(0, MAX_HISTORY);
 }
 
-function sourceLabel(source: SelectionSource): string {
+function sourceLabel(source: SelectionSource, tr: Translator): string {
   switch (source) {
     case 'img':
-      return '图片';
+      return tr('sourceImg');
     case 'canvas':
-      return 'Canvas';
+      return tr('sourceCanvas');
     case 'video':
-      return '视频帧';
+      return tr('sourceVideo');
     case 'background':
-      return '背景图';
+      return tr('sourceBackground');
     case 'viewport':
-      return '视口截图';
+      return tr('sourceViewport');
     default:
       return source;
   }

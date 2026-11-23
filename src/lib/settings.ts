@@ -1,9 +1,11 @@
+import type { UiLang } from './i18n';
 import type { OcrOrientation, ReadingOrder } from './ocr/order';
 import type { TranslationProviderSetting } from './translate/types';
 
 export type OcrEngineSetting = 'auto' | 'tesseract';
 
 export interface Settings {
+  uiLang: UiLang;
   sourceLang: string;
   targetLang: string;
   ocrOrientation: OcrOrientation;
@@ -18,6 +20,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  uiLang: 'zh-CN',
   sourceLang: 'ja',
   targetLang: 'zh-CN',
   ocrOrientation: 'vertical',

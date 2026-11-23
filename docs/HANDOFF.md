@@ -13,7 +13,7 @@
    - `README.md`
 4. 检查：`git log --oneline -10`、`git status`
 5. 启动本地服务：`cd ocr-service; uv run app.py`（或 `run.cmd`）
-6. 继续下一个阶段（当前：P3.5）
+6. 继续下一个阶段（当前：P3.5 已完成，下一步 P4）
 
 ## 新会话提示词（可直接粘贴）
 
@@ -21,8 +21,8 @@
 项目：D:\Translator_helper（GitHub: bailu2005/Translator_helper）
 请先读 docs/HANDOFF.md、docs/ENGINEERING_LOG.md、docs/PROJECT_WHITEPAPER.md、README.md，
 并检查 git log / git status。
-当前阶段：P3.4 完成，P3.5 待开始。
-继续 P3.5：历史记录关联译文/学习卡、错误体验、i18n。
+当前阶段：P3.5 完成，P3 全部完成，下一步 P4。
+下一步：从 docs/ENGINEERING_LOG.md 选择 P4 子项（自动气泡检测 / GPU / 浏览器内 ONNX / Firefox / 发布）。
 约束：只做日文漫画；所有按钮遵循 UI 反馈规范；大改动先说明方案；完成后 commit/push。
 ```
 
@@ -38,10 +38,10 @@
 
 ## 当前状态
 
-- 已完成 P0–P3.4（截至 2026-11-17）
+- 已完成 P0–P3.5（截至 2026-11-23）
 - 最新提交以 `git log` 为准
-- 待做 **P3.5**：历史记录关联译文/学习卡、错误体验、i18n
-- 远期 **P4**：自动气泡检测、GPU、浏览器内 ONNX、Firefox、发布
+- P3.5 已实现：历史记录关联译文/学习卡、错误分类与内联重试、i18n（简中/繁中/英文）
+- 下一步 **P4**：自动气泡检测、GPU、浏览器内 ONNX、Firefox、发布
 
 ## 强制 UI 规范
 

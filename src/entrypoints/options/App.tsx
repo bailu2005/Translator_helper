@@ -1,4 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { classifyError } from '../../lib/errors';
+import {
+  createTranslator,
+  UI_LANGS,
+  uiLanguageLabel,
+  type MessageKey,
+  type UiLang,
+} from '../../lib/i18n';
 import {
   clearVocabulary,
   loadVocabulary,
@@ -29,9 +37,9 @@ import { showToast } from '../../lib/ui/toast';
 
 type Tab = 'settings' | 'vocabulary';
 
-const TARGET_LANGS = [
-  { value: 'zh-CN', label: '简体中文' },
-  { value: 'zh-TW', label: '繁體中文' },
+const TARGET_LANGS: { value: string; key: MessageKey }[] = [
+  { value: 'zh-CN', key: 'targetSimplified' },
+  { value: 'zh-TW', key: 'targetTraditional' },
 ];
 
 export default function App() {
@@ -52,6 +60,9 @@ export default function App() {
   const [serviceTesting, setServiceTesting] = useState(false);
   const [translationTesting, setTranslationTesting] = useState(false);
   const [glossaryBusy, setGlossaryBusy] = useState(false);
+
+  const lang = settings.uiLang;
+  const tr = useMemo(() => createTranslator(lang), [lang]);
 
   useEffect(() => {
     void loadSettings().then(setSettings);
@@ -97,9 +108,9 @@ export default function App() {
     try {
       await saveSettings(settings);
       setSaved(true);
-      showToast('设置已保存', 'success');
+      showToast(tr('optionsSaved'), 'success');
     } catch (error) {
-      showToast(`保存失败：${error instanceof Error ? error.message : String(error)}`, 'error');
+      showToast(tr('optionsSaveFailed', { detail: classifyError(error, 'save').message }), 'error');
     } finally {
       setSaving(false);
     }
@@ -107,23 +118,27 @@ export default function App() {
 
   const testService = async () => {
     setServiceTesting(true);
-    setServiceMessage('检测中…');
+    setServiceMessage(tr('optionsTesting'));
     try {
       const status = await checkOcrService(settings.ocrServiceUrl);
       let message: string;
       let type: 'success' | 'info' | 'error';
 
       if (!status.available) {
-        message = `未连接：${status.error ?? '服务未启动'}`;
+        message = tr('optionsServiceNotConnected', {
+          detail: status.error ?? tr('serviceDown'),
+        });
         type = 'error';
       } else if (status.loading) {
-        message = '已连接，模型加载中…';
+        message = tr('optionsServiceConnectedLoading');
         type = 'info';
       } else if (status.ready) {
-        message = '已连接，manga-ocr 可用。';
+        message = tr('optionsServiceConnectedReady');
         type = 'success';
       } else {
-        message = `已连接，但未就绪：${status.error ?? '未知状态'}`;
+        message = tr('optionsServiceConnectedNotReady', {
+          detail: status.error ?? tr('serviceNotReady'),
+        });
         type = 'error';
       }
 
@@ -136,7 +151,7 @@ export default function App() {
 
   const testTranslation = async () => {
     setTranslationTesting(true);
-    setTranslationTest('测试中…');
+    setTranslationTest(tr('optionsTesting'));
     try {
       const result = await translateText(
         { text: 'こんにちは', sourceLang: 'ja', targetLang: settings.targetLang },
@@ -144,9 +159,9 @@ export default function App() {
       );
       const message = `${result.engine}：${result.text}`;
       setTranslationTest(message);
-      showToast('测试翻译成功', 'success');
+      showToast(tr('optionsTestTranslationSuccess'), 'success');
     } catch (error) {
-      const message = `失败：${error instanceof Error ? error.message : String(error)}`;
+      const message = `${tr('optionsTestTranslationFailed')}：${classifyError(error, 'translation').message}`;
       setTranslationTest(message);
       showToast(message, 'error');
     } finally {
@@ -157,8 +172,8 @@ export default function App() {
   const importGlossary = async () => {
     const entries = parseGlossary(glossaryText);
     if (entries.length === 0) {
-      setGlossaryMessage('没有解析到有效条目');
-      showToast('没有解析到有效条目', 'error');
+      setGlossaryMessage(tr('optionsNoValidEntries'));
+      showToast(tr('optionsNoValidEntries'), 'error');
       return;
     }
 
@@ -166,8 +181,8 @@ export default function App() {
     try {
       await saveGlossary(entries);
       setGlossary(entries);
-      setGlossaryMessage(`已导入 ${entries.length} 条`);
-      showToast(`已导入 ${entries.length} 条术语`, 'success');
+      setGlossaryMessage(tr('optionsGlossaryImportedCount', { count: entries.length }));
+      showToast(tr('optionsGlossaryImportedCount', { count: entries.length }), 'success');
     } finally {
       setGlossaryBusy(false);
     }
@@ -181,8 +196,8 @@ export default function App() {
     setGlossaryText(text);
     const entries = parseGlossary(text);
     if (entries.length === 0) {
-      setGlossaryMessage('文件里没有解析到有效条目');
-      showToast('文件里没有解析到有效条目', 'error');
+      setGlossaryMessage(tr('optionsFileNoValidEntries'));
+      showToast(tr('optionsFileNoValidEntries'), 'error');
       return;
     }
 
@@ -190,15 +205,15 @@ export default function App() {
     try {
       await saveGlossary(entries);
       setGlossary(entries);
-      setGlossaryMessage(`已从文件导入 ${entries.length} 条`);
-      showToast(`已从文件导入 ${entries.length} 条术语`, 'success');
+      setGlossaryMessage(tr('optionsImportedFromFile', { count: entries.length }));
+      showToast(tr('optionsImportedFromFile', { count: entries.length }), 'success');
     } finally {
       setGlossaryBusy(false);
     }
   };
 
   const clearAllGlossary = async () => {
-    if (!window.confirm('确定清空术语表吗？')) {
+    if (!window.confirm(tr('optionsConfirmClearGlossary'))) {
       return;
     }
     setGlossaryBusy(true);
@@ -206,8 +221,8 @@ export default function App() {
       await clearGlossary();
       setGlossary([]);
       setGlossaryText('');
-      setGlossaryMessage('术语表已清空');
-      showToast('术语表已清空', 'success');
+      setGlossaryMessage(tr('optionsGlossaryCleared'));
+      showToast(tr('optionsGlossaryCleared'), 'success');
     } finally {
       setGlossaryBusy(false);
     }
@@ -225,29 +240,33 @@ export default function App() {
 
   const exportGlossary = () => {
     downloadFile(serializeGlossaryCsv(glossary), 'text/csv;charset=utf-8', 'glossary.csv');
-    showToast('已导出术语表 CSV', 'success');
+    showToast(tr('optionsExportedGlossary'), 'success');
   };
 
   const deleteVocab = async (id: string) => {
-    const next = await removeVocabularyEntry(id);
-    setVocabulary(next);
-    setVocabMessage('已删除');
-    showToast('已删除生词', 'success');
+    try {
+      const next = await removeVocabularyEntry(id);
+      setVocabulary(next);
+      setVocabMessage(tr('optionsDeleted'));
+      showToast(tr('optionsDeleted'), 'success');
+    } catch (error) {
+      showToast(classifyError(error, 'save').message, 'error');
+    }
   };
 
   const clearVocab = async () => {
-    if (!window.confirm('确定清空生词本吗？')) {
+    if (!window.confirm(tr('optionsConfirmClearVocabulary'))) {
       return;
     }
     await clearVocabulary();
     setVocabulary([]);
-    setVocabMessage('生词本已清空');
-    showToast('生词本已清空', 'success');
+    setVocabMessage(tr('optionsVocabularyCleared'));
+    showToast(tr('optionsVocabularyCleared'), 'success');
   };
 
   const exportVocabCsv = () => {
     downloadFile(serializeVocabularyCsv(vocabulary), 'text/csv;charset=utf-8', 'vocabulary.csv');
-    showToast('已导出生词本 CSV', 'success');
+    showToast(tr('optionsExportedVocabularyCsv'), 'success');
   };
 
   const exportVocabJson = () => {
@@ -256,7 +275,7 @@ export default function App() {
       'application/json;charset=utf-8',
       'vocabulary.json',
     );
-    showToast('已导出生词本 JSON', 'success');
+    showToast(tr('optionsExportedVocabularyJson'), 'success');
   };
 
   const query = vocabQuery.trim().toLowerCase();
@@ -271,21 +290,21 @@ export default function App() {
   return (
     <main className="options">
       <header className="options-header">
-        <h1>Translator Helper</h1>
+        <h1>{tr('appName')}</h1>
         <div className="tab-bar">
           <button
             className={activeTab === 'settings' ? 'tab active' : 'tab'}
             onClick={() => switchTab('settings')}
             type="button"
           >
-            设置
+            {tr('optionsTabSettings')}
           </button>
           <button
             className={activeTab === 'vocabulary' ? 'tab active' : 'tab'}
             onClick={() => switchTab('vocabulary')}
             type="button"
           >
-            生词本（{vocabulary.length}）
+            {tr('optionsTabVocabulary', { count: vocabulary.length })}
           </button>
         </div>
       </header>
@@ -294,7 +313,21 @@ export default function App() {
         {activeTab === 'settings' ? (
           <div className="tab-panel">
             <label>
-              源语言
+              {tr('optionsUiLanguage')}
+              <select
+                value={settings.uiLang}
+                onChange={(event) => update('uiLang', event.target.value as UiLang)}
+              >
+                {UI_LANGS.map((value) => (
+                  <option key={value} value={value}>
+                    {uiLanguageLabel(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              {tr('optionsSourceLanguage')}
               <input
                 value={settings.sourceLang}
                 onChange={(event) => update('sourceLang', event.target.value)}
@@ -302,34 +335,34 @@ export default function App() {
             </label>
 
             <label>
-              目标语言
+              {tr('optionsTargetLanguage')}
               <select
                 value={settings.targetLang}
                 onChange={(event) => update('targetLang', event.target.value)}
               >
-                {TARGET_LANGS.map((lang) => (
-                  <option key={lang.value} value={lang.value}>
-                    {lang.label}
+                {TARGET_LANGS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {tr(option.key)}
                   </option>
                 ))}
               </select>
             </label>
 
-            <h2>OCR</h2>
+            <h2>{tr('optionsOcrSection')}</h2>
 
             <label>
-              OCR 引擎
+              {tr('optionsOcrEngine')}
               <select
                 value={settings.ocrEngine}
                 onChange={(event) => update('ocrEngine', event.target.value as OcrEngineSetting)}
               >
-                <option value="auto">本地 manga-ocr（失败回退 Tesseract）</option>
-                <option value="tesseract">仅内置 Tesseract</option>
+                <option value="auto">{tr('optionsOcrEngineAuto')}</option>
+                <option value="tesseract">{tr('optionsOcrEngineTesseract')}</option>
               </select>
             </label>
 
             <label>
-              本地服务地址
+              {tr('optionsServiceUrl')}
               <input
                 value={settings.ocrServiceUrl}
                 onChange={(event) => update('ocrServiceUrl', event.target.value)}
@@ -337,25 +370,25 @@ export default function App() {
             </label>
 
             <button onClick={() => void testService()} type="button" disabled={serviceTesting}>
-              {serviceTesting ? '检测中…' : '测试连接'}
+              {serviceTesting ? tr('optionsTesting') : tr('optionsTestConnection')}
             </button>
 
             {serviceMessage && <p className="service-message">{serviceMessage}</p>}
 
-            <h2>翻译</h2>
+            <h2>{tr('optionsTranslationSection')}</h2>
 
             <label>
-              翻译引擎
+              {tr('optionsTranslationEngine')}
               <select
                 value={settings.translationProvider}
                 onChange={(event) =>
                   update('translationProvider', event.target.value as TranslationProviderSetting)
                 }
               >
-                <option value="auto">自动（LLM → Chrome 内置 → MyMemory）</option>
-                <option value="chrome">Chrome 内置翻译</option>
-                <option value="mymemory">MyMemory</option>
-                <option value="llm">LLM</option>
+                <option value="auto">{tr('optionsProviderAuto')}</option>
+                <option value="chrome">{tr('optionsProviderChrome')}</option>
+                <option value="mymemory">{tr('optionsProviderMyMemory')}</option>
+                <option value="llm">{tr('optionsProviderLlm')}</option>
               </select>
             </label>
 
@@ -365,15 +398,12 @@ export default function App() {
                 checked={settings.autoTranslate}
                 onChange={(event) => update('autoTranslate', event.target.checked)}
               />
-              识别完成后自动翻译
+              {tr('optionsAutoTranslate')}
             </label>
 
-            <h2>术语表</h2>
+            <h2>{tr('optionsGlossarySection')}</h2>
 
-            <p className="hint">
-              格式：CSV / TSV / JSON，每行
-              source,target，例如「ルフィ,路飞」。导入后会在翻译时强制使用。
-            </p>
+            <p className="hint">{tr('optionsGlossaryHint')}</p>
 
             <textarea
               rows={6}
@@ -384,10 +414,10 @@ export default function App() {
 
             <div className="glossary-actions">
               <button onClick={() => void importGlossary()} type="button" disabled={glossaryBusy}>
-                {glossaryBusy ? '导入中…' : '导入文本'}
+                {glossaryBusy ? tr('optionsImporting') : tr('optionsImportText')}
               </button>
               <label className="file-button">
-                选择文件
+                {tr('actionChooseFile')}
                 <input
                   type="file"
                   accept=".csv,.tsv,.txt,.json"
@@ -395,33 +425,37 @@ export default function App() {
                 />
               </label>
               <button onClick={exportGlossary} type="button" disabled={glossary.length === 0}>
-                导出 CSV
+                {tr('actionExportCsv')}
               </button>
               <button
                 onClick={() => void clearAllGlossary()}
                 type="button"
                 disabled={glossary.length === 0 || glossaryBusy}
               >
-                清空
+                {tr('actionClear')}
               </button>
             </div>
 
             {glossaryMessage && <p className="service-message">{glossaryMessage}</p>}
 
             <p className="hint">
-              已导入 {glossary.length} 条
               {glossary.length > 0
-                ? `，例如：${glossary
-                    .slice(0, 3)
-                    .map((entry) => `${entry.source}→${entry.target}`)
-                    .join('；')}`
-                : ''}
+                ? `${tr('optionsGlossaryImportedCount', { count: glossary.length })}${tr(
+                    'optionsGlossaryExamples',
+                    {
+                      examples: glossary
+                        .slice(0, 3)
+                        .map((entry) => `${entry.source}→${entry.target}`)
+                        .join('；'),
+                    },
+                  )}`
+                : tr('optionsGlossaryNone')}
             </p>
 
-            <h2>LLM（可选）</h2>
+            <h2>{tr('optionsLlmSection')}</h2>
 
             <label>
-              Base URL
+              {tr('optionsBaseUrl')}
               <input
                 value={settings.llmBaseUrl}
                 placeholder="https://api.openai.com/v1"
@@ -430,7 +464,7 @@ export default function App() {
             </label>
 
             <label>
-              模型
+              {tr('optionsModel')}
               <input
                 value={settings.llmModel}
                 placeholder="gpt-4o-mini / qwen2.5:7b"
@@ -439,7 +473,7 @@ export default function App() {
             </label>
 
             <label>
-              API Key
+              {tr('optionsApiKey')}
               <input
                 type="password"
                 value={settings.llmApiKey}
@@ -447,61 +481,61 @@ export default function App() {
               />
             </label>
 
-            <p className="hint">
-              Key 仅存储在浏览器本地（未加密）。Ollama 可用 http://localhost:11434/v1，并设置
-              OLLAMA_ORIGINS 允许扩展来源。
-            </p>
+            <p className="hint">{tr('optionsLlmHint')}</p>
 
             <button
               onClick={() => void testTranslation()}
               type="button"
               disabled={translationTesting}
             >
-              {translationTesting ? '测试中…' : '测试翻译'}
+              {translationTesting ? tr('optionsTesting') : tr('optionsTestTranslation')}
             </button>
 
             {translationTest && <p className="service-message">{translationTest}</p>}
 
             <button className="primary" onClick={() => void save()} disabled={saving}>
-              {saving ? '保存中…' : '保存'}
+              {saving ? tr('optionsSaving') : tr('actionSave')}
             </button>
 
-            {saved && <p className="saved">已保存</p>}
+            {saved && <p className="saved">{tr('optionsSaved')}</p>}
           </div>
         ) : (
           <div className="tab-panel">
             <div className="vocab-toolbar">
               <input
-                placeholder="搜索表记 / 读音 / 释义"
+                placeholder={tr('optionsSearchPlaceholder')}
                 value={vocabQuery}
                 onChange={(event) => setVocabQuery(event.target.value)}
               />
 
               <div className="glossary-actions">
                 <button onClick={exportVocabCsv} type="button" disabled={vocabulary.length === 0}>
-                  导出 CSV
+                  {tr('actionExportCsv')}
                 </button>
                 <button onClick={exportVocabJson} type="button" disabled={vocabulary.length === 0}>
-                  导出 JSON
+                  {tr('actionExportJson')}
                 </button>
                 <button
                   onClick={() => void clearVocab()}
                   type="button"
                   disabled={vocabulary.length === 0}
                 >
-                  清空
+                  {tr('actionClear')}
                 </button>
               </div>
 
               {vocabMessage && <p className="service-message">{vocabMessage}</p>}
 
               <p className="hint">
-                共 {vocabulary.length} 条，当前显示 {filteredVocabulary.length} 条
+                {tr('optionsVocabularyCount', {
+                  total: vocabulary.length,
+                  shown: filteredVocabulary.length,
+                })}
               </p>
             </div>
 
             {filteredVocabulary.length === 0 ? (
-              <p className="hint">暂无生词。在侧边栏学习区点击「加入生词本」。</p>
+              <p className="hint">{tr('optionsVocabularyEmpty')}</p>
             ) : (
               <div className="vocab-list">
                 {filteredVocabulary.map((entry) => (
@@ -515,14 +549,26 @@ export default function App() {
                         onClick={() => void deleteVocab(entry.id)}
                         type="button"
                       >
-                        删除
+                        {tr('actionDelete')}
                       </button>
                     </div>
                     {entry.meaning && <p className="vocab-meaning">{entry.meaning}</p>}
-                    {entry.usage && <p className="vocab-detail">用法：{entry.usage}</p>}
-                    {entry.example && <p className="vocab-detail">例：{entry.example}</p>}
-                    {entry.source && <p className="vocab-source">原文：{entry.source}</p>}
-                    {entry.translation && <p className="vocab-source">译文：{entry.translation}</p>}
+                    {entry.usage && (
+                      <p className="vocab-detail">{tr('optionsUsage', { text: entry.usage })}</p>
+                    )}
+                    {entry.example && (
+                      <p className="vocab-detail">
+                        {tr('optionsExample', { text: entry.example })}
+                      </p>
+                    )}
+                    {entry.source && (
+                      <p className="vocab-source">{tr('optionsSource', { text: entry.source })}</p>
+                    )}
+                    {entry.translation && (
+                      <p className="vocab-source">
+                        {tr('optionsTranslation', { text: entry.translation })}
+                      </p>
+                    )}
                     <p className="vocab-meta">{new Date(entry.createdAt).toLocaleString()}</p>
                   </div>
                 ))}

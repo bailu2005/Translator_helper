@@ -345,6 +345,41 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.error-panel {
+  background: rgba(192, 57, 43, 0.08);
+  border: 1px solid rgba(192, 57, 43, 0.35);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+}
+
+.error-title {
+  color: #c0392b;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.error-detail {
+  font-size: 11px;
+  margin: 0;
+  opacity: 0.7;
+  overflow-wrap: anywhere;
+}
+
+.error-hint {
+  font-size: 12px;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.error-retry {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
 .history-list {
   display: flex;
   gap: 10px;
@@ -386,6 +421,21 @@ button:disabled {
   opacity: 0.6;
   padding: 2px 0;
   text-align: center;
+}
+
+.thumb .thumb-badge {
+  background: #2f6feb;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 9px;
+  height: 16px;
+  line-height: 16px;
+  opacity: 1;
+  padding: 0;
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 16px;
 }
 
 .remove {
